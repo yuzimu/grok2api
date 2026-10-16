@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.repository == 'realotz/grok2api' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/oracle-v'))
+    if: github.repository == 'yuzimu/grok2api' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/oracle-v'))
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 35
     permissions:
@@ -45,9 +45,9 @@ jobs:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          image="ghcr.io/realotz/grok2api:sha-$SOURCE_REVISION"
+          image="ghcr.io/yuzimu/grok2api:sha-$SOURCE_REVISION"
           docker buildx build --platform linux/arm64 --load --file Dockerfile \
-            --label "org.opencontainers.image.source=https://github.com/realotz/grok2api" \
+            --label "org.opencontainers.image.source=https://github.com/yuzimu/grok2api" \
             --label "org.opencontainers.image.revision=$SOURCE_REVISION" \
             --label "io.grok2api.source-sha256=$SOURCE_SHA256" \
             --tag "$image" .
@@ -69,10 +69,10 @@ jobs:
           trap 'exit 130' INT
           trap 'exit 143' TERM
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin >/dev/null
-          image="ghcr.io/realotz/grok2api:sha-$SOURCE_REVISION"
+          image="ghcr.io/yuzimu/grok2api:sha-$SOURCE_REVISION"
           docker push "$image"
           digest=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
-          [[ "$digest" =~ ^ghcr\.io/realotz/grok2api@sha256:[a-f0-9]{64}$ ]]
+          [[ "$digest" =~ ^ghcr\.io/yuzimu/grok2api@sha256:[a-f0-9]{64}$ ]]
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
           printf 'Image: `%s`\nSource: `%s`\n' "$digest" "$SOURCE_REVISION" >> "$GITHUB_STEP_SUMMARY"
 
