@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -365,14 +366,29 @@ func videoCreatePayload(request provider.VideoRequest, uploadURL string, profile
 	return payload, nil
 }
 
+// pollVideoJob 在原截止时间内观察同一任务，网络恢复不改变任务或账号身份。
 func (a *Adapter) pollVideoJob(ctx context.Context, credential account.Credential, accessToken, base, jobID, assetID string, profile videoRequestProfile, progress func(int)) (provider.VideoResult, error) {
 	ticker := time.NewTicker(buildVideoPollEvery)
 	defer ticker.Stop()
+	retryDelay := buildVideoPollEvery
 	for {
 		statusBody, err := a.doVideoJSON(ctx, credential, accessToken, http.MethodGet, base, "/videos/"+url.PathEscape(jobID), nil, profile, false)
 		if err != nil {
+			// 已接单后只恢复同一任务的查询；瞬时网络错误不能触发新生成或账号轮换。
+			if ctx.Err() == nil && transientVideoPollError(err) {
+				timer := time.NewTimer(retryDelay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePoll, 0, ctx.Err())
+				case <-timer.C:
+					retryDelay = min(retryDelay*2, 30*time.Second)
+					continue
+				}
+			}
 			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePoll, 0, err)
 		}
+		retryDelay = buildVideoPollEvery
 		result, done, pollErr := parseVideoStatusResponse(statusBody, progress, assetID != "")
 		if pollErr != nil {
 			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePoll, 0, pollErr)
@@ -404,6 +420,17 @@ func (a *Adapter) pollVideoJob(ctx context.Context, credential account.Credentia
 		case <-ticker.C:
 		}
 	}
+}
+
+// transientVideoPollError 只允许重查明确的传输或服务暂态错误，业务拒绝仍立即返回。
+func transientVideoPollError(err error) bool {
+	if status, ok := provider.ErrorHTTPStatus(err); ok {
+		return status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status == http.StatusInternalServerError ||
+			status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+	}
+	var transport *url.Error
+	var network net.Error
+	return errors.As(err, &transport) || errors.As(err, &network) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)
 }
 
 func buildVideoCreateFailure(err error) error {
