@@ -55,7 +55,7 @@ type remoteImageResolver interface {
 	LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error)
 }
 
-// prepareChatAttachments 在同一账号和出口租约内解析、下载并上传对话附件。
+// prepareChatAttachments 解析附件并直连下载图片，再使用同一账号出口上传。
 func (a *Adapter) prepareChatAttachments(ctx context.Context, cfg Config, lease *egress.Lease, token string, inputs []chatAttachmentInput) ([]string, error) {
 	if len(inputs) == 0 {
 		return nil, nil
@@ -104,6 +104,7 @@ func (a *Adapter) prepareChatAttachments(ctx context.Context, cfg Config, lease 
 	return attachments, nil
 }
 
+// loadChatImage 解析内联图片或直连下载远程图片，保留公网地址固定与内容校验。
 func (a *Adapter) loadChatImage(ctx context.Context, lease *egress.Lease, input string, maxBytes int64) (provider.ImageInput, error) {
 	if strings.HasPrefix(strings.ToLower(input), "data:") {
 		return parseChatImageDataURI(input, maxBytes)
@@ -113,7 +114,8 @@ func (a *Adapter) loadChatImage(ctx context.Context, lease *egress.Lease, input 
 		return provider.ImageInput{}, err
 	}
 	// 外部图片地址不接收 SSO 或 Cloudflare Cookie，避免把上游凭据泄漏给第三方。
-	raw, contentType, err := fetchPinnedHTTPS(ctx, lease, target, remoteImageHeaders(lease.UserAgent), maxBytes)
+	// 独立的无代理租约不继承账号代理，也不改变上传和生成使用的原租约。
+	raw, contentType, err := fetchPinnedHTTPS(ctx, &egress.Lease{}, target, remoteImageHeaders(lease.UserAgent), maxBytes)
 	if err != nil {
 		return provider.ImageInput{}, fmt.Errorf("下载对话图片: %w", err)
 	}
@@ -157,9 +159,7 @@ func remoteFileHeaders(userAgent string) http.Header {
 	return value
 }
 
-// fetchPinnedHTTPS downloads a GET through the current Web lease. GET is
-// idempotent, so transport / 5xx failures retry with backoff instead of
-// failing the video job on a single proxy blip.
+// fetchPinnedHTTPS 使用传入租约下载固定公网地址，并对幂等 GET 的暂时性失败重试。
 func fetchPinnedHTTPS(ctx context.Context, lease *egress.Lease, target *remoteImageTarget, header http.Header, maxBytes int64) ([]byte, string, error) {
 	if target == nil {
 		return nil, "", errors.New("下载目标为空")
