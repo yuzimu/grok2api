@@ -92,8 +92,11 @@ type accountCredentialModel struct {
 	SSOBotRiskEver                  bool    `gorm:"not null;default:false"`
 	SSOBotDetails                   string  `gorm:"size:512;not null;default:'';check:chk_account_credentials_sso_bot_details,length(sso_bot_details) <= 512"`
 	SSOBotInspectedAt               *time.Time
-	UpdatedAt                       time.Time     `gorm:"not null"`
-	Account                         *accountModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// Console-only acceleration caches; both are rebuildable from the SSO.
+	ConsoleAPIKeyID               string        `gorm:"column:console_api_key_id;size:64;not null;default:'';check:chk_account_credentials_console_api_key_id,length(console_api_key_id) <= 64"`
+	EncryptedConsoleWorkOSSession string        `gorm:"column:encrypted_console_workos_session;type:text;not null;default:'';check:chk_account_credentials_console_workos_session,length(encrypted_console_workos_session) <= 65536"`
+	UpdatedAt                     time.Time     `gorm:"not null"`
+	Account                       *accountModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 func (accountCredentialModel) TableName() string { return "account_credentials" }

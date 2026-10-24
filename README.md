@@ -51,10 +51,6 @@
 <td valign="middle">Right Code is an enterprise-grade AI Agent distribution platform that primarily provides stable access services for Claude Code, Codex, Gemini, and other models. It supports invoicing and dedicated one-to-one assistance for enterprises and teams. Thanks to Right Code for providing token support. Click <a href="https://www.right.codes/register">here</a> to register and get started.</td>
 </tr>
 <tr>
-<td width="200" align="center" valign="middle"><a href="https://www.swiftproxy.net/?ref=grok2api"><img src="frontend/public/sponner/swift-proxy.png" alt="Swiftproxy" width="180"></a></td>
-<td valign="middle">Swiftproxy provides 90M+ clean residential IPs across 220+ locations, supporting HTTP(S)/SOCKS5, IP rotation, Sticky Sessions, and precise location targeting. It helps API services and automation workflows access online platforms reliably from different locations, making it suitable for API requests, automation, data collection, and location-based access. Residential proxies start at $0.7/GB. Free testing is available, and code PROXY90 gives 10% off. <a href="https://www.swiftproxy.net/?ref=grok2api">Try Swiftproxy now</a>.</td>
-</tr>
-<tr>
 <td width="200" align="center" valign="middle"><a href="https://www.rapidproxy.io/?ref=grok2api"><img src="frontend/public/sponner/rapid-proxy.jpg" alt="RapidProxy" width="180"></a></td>
 <td valign="middle">RapidProxy is a data collection proxy solution built for developers, providing stable and reliable residential proxy services. With 90M+ global residential IPs and 200+ country coverage, intelligent rotation, and precise geo-targeting, it helps projects such as web scraping, AI data training, SEO monitoring, and e-commerce data analysis break through access restrictions and improve data collection efficiency. It supports mainstream automation frameworks such as Playwright, Selenium, and Puppeteer, with prices as low as $0.65/GB — <a href="https://www.rapidproxy.io/?ref=grok2api">start your free test now</a>.</td>
 </tr>
@@ -417,11 +413,13 @@ qualityGuard:
     holdTimeout: 30s
     minOutputTokens: 5
     onExhausted: fail_closed # fail_open | fail_closed
+    # Disable on the first confirmed missing-thinking or degraded-speed hit.
+    autoDisable: true
     accountCooldown: 12h
     idleAccountCooldown: 15m
 ```
 
-`requestRetry` runs on the gateway request path and is independent of the sidecar. It applies only to Grok 4.7; older models bypass quality guarding. `config.example.yaml` keeps `enabled: false`; set it true to intercept. When enabled, a Grok 4.7 stream with enough visible output and no streamed reasoning is **not delivered**; replay-safe stateless requests may try another account. TUI follow-ups (`previous_response_id`) and hosted-tool turns are still held for classification, but a quality withhold never replays account-bound state or side-effecting tools across accounts; `onExhausted` returns `503 quality_degraded` or releases that held body. Context compaction, image, video, and ForcedEgress probe requests are unchanged.
+`requestRetry` runs on the gateway request path independently of the sidecar and applies only to Grok 4.7. Built-in defaults and `config.example.yaml` leave `enabled` and `autoDisable` off; either switch enables quality checks. Streams with enough visible output and no streamed reasoning are held, and replay-safe stateless requests may try another account. `autoDisable` disables accounts on confirmed missing-thinking or degraded-speed hits. TUI follow-ups and hosted-tool turns are classified without replaying account-bound state or side-effecting tools across accounts. `onExhausted` returns `503 quality_degraded` or releases the held response. Context compaction, image, video, and ForcedEgress probes bypass these checks.
 
 ```bash
 docker compose --profile quality-guard up -d --build

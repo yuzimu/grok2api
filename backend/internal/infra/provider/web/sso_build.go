@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -132,7 +131,9 @@ func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Cre
 		"Upgrade-Insecure-Requests": "1",
 		"Referer":                   "https://auth.x.ai/",
 	}
-	consentToken := scrapeConsentToken(verifyBody)
+	// verify 以 3xx 跳转到 consent 时响应体为空，需要 GET consent 页面本身来解析 consent_token。
+	consentToken := extractConsentToken(verifyBody)
+	consentUserCode := extractConsentInput(verifyBody, "user_code")
 	if consentToken == "" {
 		var consentBody []byte
 		status, consentPage, consentBody, err = f.doWithFollow(ctx, http.MethodGet, consentPage, nil, true, browserHeaders)
@@ -142,12 +143,14 @@ func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Cre
 		if status < 200 || status >= 300 {
 			return provider.CredentialSeed{}, fmt.Errorf("SSO Device Consent 页面加载失败: %w", conversionHTTPError{status: status})
 		}
-		consentToken = scrapeConsentToken(consentBody)
+		consentToken = extractConsentToken(consentBody)
+		consentUserCode = extractConsentInput(consentBody, "user_code")
 	}
-	if !consentTokenMatchesDevice(consentToken, device.DeviceCode) {
-		return provider.CredentialSeed{}, fmt.Errorf("SSO Device Consent 缺少匹配当前设备的 consent_token")
+	if !consentTokenMatchesDevice(consentToken, device.DeviceCode) && !consentTokenMatchesUserCode(consentToken, consentUserCode, device.UserCode, time.Now()) {
+		return provider.CredentialSeed{}, fmt.Errorf("SSO 自动批准 Device Flow 失败：未获取 consent_token")
 	}
-	status, finalURL, _, err = f.doWithFollow(ctx, http.MethodPost, ssoApproveURL, url.Values{
+
+	status, finalURL, approveBody, err := f.doWithFollow(ctx, http.MethodPost, ssoApproveURL, url.Values{
 		"user_code": {device.UserCode}, "action": {"allow"}, "principal_type": {"User"}, "principal_id": {""},
 		"consent_token": {consentToken},
 	}, false, map[string]string{
@@ -162,6 +165,11 @@ func (f *ssoBuildFlow) convert(ctx context.Context, credential accountdomain.Cre
 	})
 	if err != nil {
 		return provider.CredentialSeed{}, err
+	}
+	if status == http.StatusForbidden && isBrowserVerificationRequired(approveBody) {
+		// Observed 2026-10-20: approve now demands a Castle browser token that only
+		// the consent page's script can produce. Not an SSO failure.
+		return provider.CredentialSeed{}, fmt.Errorf("%w: xAI 要求浏览器校验后才能批准授权，请改用 Device OAuth 在浏览器中手动完成", errBrowserVerificationRequired)
 	}
 	if status < 200 || status >= 400 {
 		return provider.CredentialSeed{}, fmt.Errorf("SSO 自动批准 Device Flow 失败: %w", conversionHTTPError{status: status})
@@ -345,33 +353,7 @@ var consentTokenJSONRe = regexp.MustCompile(`(?i)\\?["']?(?:consentToken|consent
 
 // scrapeConsentToken 优先读取隐藏表单字段，兼容授权页内嵌的 JSON 令牌。
 func scrapeConsentToken(body []byte) string {
-	tokenizer := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokenizer.Next() {
-		case html.ErrorToken:
-			if match := consentTokenJSONRe.FindSubmatch(body); match != nil {
-				return string(match[1])
-			}
-			return ""
-		case html.StartTagToken, html.SelfClosingTagToken:
-			token := tokenizer.Token()
-			if token.Data != "input" {
-				continue
-			}
-			var name, value string
-			for _, attr := range token.Attr {
-				switch attr.Key {
-				case "name":
-					name = attr.Val
-				case "value":
-					value = attr.Val
-				}
-			}
-			if name == "consent_token" {
-				return value
-			}
-		}
-	}
+	return extractConsentToken(body)
 }
 
 // consentTokenMatchesDevice 防止提交其他设备授权流程的一次性令牌。
@@ -444,6 +426,99 @@ func normalizeSSOToken(value string) string {
 	return strings.NewReplacer("\r", "", "\n", "", "\x00", "").Replace(value)
 }
 
+// extractConsentToken 从 consent 页面 HTML 中解析一次性 consent_token：
+// 优先取表单隐藏字段 name="consent_token"，回退到 RSC/JSON 里的 consentToken。
+func extractConsentToken(body []byte) string {
+	tokenizer := html.NewTokenizer(strings.NewReader(string(body)))
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			break
+		}
+		if tokenType != html.StartTagToken && tokenType != html.SelfClosingTagToken {
+			continue
+		}
+		token := tokenizer.Token()
+		if !strings.EqualFold(token.Data, "input") {
+			continue
+		}
+		var name, value string
+		for _, attribute := range token.Attr {
+			switch strings.ToLower(attribute.Key) {
+			case "name":
+				name = attribute.Val
+			case "value":
+				value = attribute.Val
+			}
+		}
+		if strings.EqualFold(name, "consent_token") && value != "" {
+			return value
+		}
+	}
+	if m := consentTokenJSONRe.FindSubmatch(body); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+// consentTokenMatchesUserCode binds a consent token to this device request
+// when its dc claim is a server-side authorization id (observed 2026-10-20:
+// a UUID unrelated to device_code). The consent form echoes our user_code, so
+// the token is accepted only from that form, with the consent audience and an
+// unexpired exp.
+func consentTokenMatchesUserCode(token, pageUserCode, userCode string, now time.Time) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[2] == "" || userCode == "" || !strings.EqualFold(strings.TrimSpace(pageUserCode), userCode) {
+		return false
+	}
+	header, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	var head struct {
+		Typ string `json:"typ"`
+	}
+	if json.Unmarshal(header, &head) != nil || !strings.EqualFold(head.Typ, "consent+jwt") {
+		return false
+	}
+	claims := decodeBuildClaims(token)
+	if claimString(claims, "aud") != "consent" || claimString(claims, "dc") == "" {
+		return false
+	}
+	exp, _ := claims["exp"].(float64)
+	return exp > 0 && time.Unix(int64(exp), 0).After(now)
+}
+
+// extractConsentInput returns the value of a hidden input on the consent form.
+func extractConsentInput(body []byte, field string) string {
+	tokenizer := html.NewTokenizer(strings.NewReader(string(body)))
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			return ""
+		}
+		if tokenType != html.StartTagToken && tokenType != html.SelfClosingTagToken {
+			continue
+		}
+		token := tokenizer.Token()
+		if !strings.EqualFold(token.Data, "input") {
+			continue
+		}
+		var name, value string
+		for _, attribute := range token.Attr {
+			switch strings.ToLower(attribute.Key) {
+			case "name":
+				name = attribute.Val
+			case "value":
+				value = attribute.Val
+			}
+		}
+		if strings.EqualFold(name, field) {
+			return value
+		}
+	}
+}
+
 func decodeBuildClaims(token string) map[string]any {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
@@ -472,6 +547,15 @@ func firstValue(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// errBrowserVerificationRequired reports that xAI refused the automated
+// device approval because it requires an interactive browser check.
+var errBrowserVerificationRequired = errors.New("xAI device approval requires browser verification")
+
+func isBrowserVerificationRequired(body []byte) bool {
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "could not verify this browser") || strings.Contains(text, "request could not be verified")
 }
 
 type conversionHTTPError struct{ status int }
