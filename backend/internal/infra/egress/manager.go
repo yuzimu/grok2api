@@ -1501,7 +1501,11 @@ func (m *Manager) createAndCacheClient(key clientCacheKey, id uint64, scope doma
 	return value, nil
 }
 
+// buildCachedClient 按作用域构建独立客户端；Console未配置代理时拒绝出站，不回落直连。
 func (m *Manager) buildCachedClient(scope domain.Scope, proxyURL, userAgent string, buildHeaderTimeout time.Duration, options clientOptions) (cachedClient, error) {
+	if (scope == domain.ScopeConsole || scope == domain.ScopeConsoleAsset) && strings.TrimSpace(proxyURL) == "" {
+		return cachedClient{}, errors.New("Console 请求必须配置代理出口")
+	}
 	if scope == domain.ScopeBuild {
 		if options.buildEnvironmentProxy {
 			factory := m.newBuildEnvClient
@@ -1532,6 +1536,7 @@ func (m *Manager) buildCachedClient(scope domain.Scope, proxyURL, userAgent stri
 	if err != nil {
 		return cachedClient{}, err
 	}
+	client.scope = scope
 	return cachedClient{client: client, browser: client}, nil
 }
 

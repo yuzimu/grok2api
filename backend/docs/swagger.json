@@ -115,8 +115,10 @@
                         "BearerAuth": []
                     }
                 ],
+                "description": "支持原 JSON image/images URL 对象（包括 data URL），或 multipart 的 image/image[] 文件。multipart 标量 n、stream、partial_images 等进入同一业务校验；selection_regions/multi_region_edits 使用 JSON 表单值。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。n 仅支持 1，quality 仅支持 low/medium。mask、background、input_fidelity、output_format、output_compression、user 不支持并明确报错。",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -248,6 +250,7 @@
         },
         "/v1/media/images/{asset_id}": {
             "get": {
+                "description": "无需 API Key 或 Cookie，可直接下载。",
                 "produces": [
                     "image/png"
                 ],
@@ -536,6 +539,54 @@
                 }
             }
         },
+        "/v1/videos": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
+                "consumes": [
+                    "application/json",
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Videos"
+                ],
+                "summary": "创建异步视频任务",
+                "parameters": [
+                    {
+                        "description": "请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httpserver.SwaggerVideoGenerationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/v1/videos/edits": {
             "post": {
                 "security": [
@@ -639,8 +690,10 @@
                         "BearerAuth": []
                     }
                 ],
+                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -665,9 +718,7 @@
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -720,6 +771,68 @@
                     }
                 }
             }
+        },
+        "/v1/videos/{request_id}/content": {
+            "get": {
+                "description": "无需 API Key 或 Cookie；本地视频支持 Range 分段读取。",
+                "produces": [
+                    "video/mp4"
+                ],
+                "tags": [
+                    "Videos"
+                ],
+                "summary": "直接下载已完成视频",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "206": {
+                        "description": "Partial Content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "head": {
+                "description": "无需 API Key 或 Cookie，不返回文件正文。",
+                "tags": [
+                    "Videos"
+                ],
+                "summary": "读取已完成视频的下载响应头",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -767,6 +880,10 @@
                 "prompt": {
                     "type": "string",
                     "example": "Change the background to black"
+                },
+                "quality": {
+                    "type": "string",
+                    "example": "medium"
                 },
                 "resolution": {
                     "type": "string",
@@ -936,6 +1053,9 @@
                 "image": {
                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
                 },
+                "input_reference": {
+                    "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                },
                 "last_frame": {
                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
                 },
@@ -962,6 +1082,14 @@
                 "resolution": {
                     "type": "string",
                     "example": "720p"
+                },
+                "seconds": {
+                    "type": "string",
+                    "example": "8"
+                },
+                "size": {
+                    "type": "string",
+                    "example": "1280x720"
                 },
                 "video": {
                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"

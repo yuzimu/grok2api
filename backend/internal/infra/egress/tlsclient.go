@@ -17,10 +17,12 @@ import (
 	tlsclient "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
 	"github.com/bogdanfinn/websocket"
+	egressdomain "github.com/chenyme/grok2api/backend/internal/domain/egress"
 	"github.com/chenyme/grok2api/backend/internal/pkg/tunnelproxy"
 )
 
 type browserClient struct {
+	scope     egressdomain.Scope
 	inner     tlsclient.HttpClient
 	proxyURL  string
 	userAgent string
@@ -28,9 +30,9 @@ type browserClient struct {
 	direct    *browserClient
 }
 
-// forHost 为 x.ai 复用同指纹的直连客户端，不修改共享代理客户端。
+// forHost 保留Console及其素材请求的代理，其他作用域的x.ai请求沿用直连策略。
 func (c *browserClient) forHost(host string) (*browserClient, error) {
-	if c.proxyURL == "" || !DirectXAIHost(host) {
+	if c.scope == egressdomain.ScopeConsole || c.scope == egressdomain.ScopeConsoleAsset || c.proxyURL == "" || !DirectXAIHost(host) {
 		return c, nil
 	}
 	c.directMu.Lock()

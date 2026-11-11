@@ -519,25 +519,37 @@ func (r *ModelRepository) ListEnabledForScope(ctx context.Context, filter reposi
 	return values, nil
 }
 
-// ListConfiguredEnabled 返回所有已启用配置，包括暂时没有可用账号的路由，供 readiness 展示部分故障。
+// ListConfiguredEnabled 只读取启用配置；readiness 通过真实候选判断可用性，不聚合账号池。
 func (r *ModelRepository) ListConfiguredEnabled(ctx context.Context) ([]model.Route, error) {
 	var rows []modelRouteModel
 	if err := r.db.db.WithContext(ctx).Where("enabled = ?", true).Order("public_id ASC, id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	values := mapModelRows(rows)
-	if err := r.annotateAvailability(ctx, values); err != nil {
-		return nil, err
-	}
-	return values, nil
+	return mapModelRows(rows), nil
 }
 
+// Get 读取执行所需路由和绑定，不在视频任务路径聚合整个账号池。
 func (r *ModelRepository) Get(ctx context.Context, id uint64) (model.Route, error) {
 	var row modelRouteModel
 	if err := r.db.db.WithContext(ctx).First(&row, id).Error; err != nil {
 		return model.Route{}, mapError(err)
 	}
-	values := []model.Route{toModelDomain(row)}
+	value := toModelDomain(row)
+	if err := r.db.db.WithContext(ctx).Model(&modelRouteAccountModel{}).
+		Where("model_route_id = ?", id).Order("account_id ASC").
+		Pluck("account_id", &value.BoundAccountIDs).Error; err != nil {
+		return model.Route{}, err
+	}
+	return value, nil
+}
+
+// getWithAvailability 仅为管理端写入响应补充账号统计。
+func (r *ModelRepository) getWithAvailability(ctx context.Context, id uint64) (model.Route, error) {
+	value, err := r.Get(ctx, id)
+	if err != nil {
+		return model.Route{}, err
+	}
+	values := []model.Route{value}
 	if err := r.annotateAvailability(ctx, values); err != nil {
 		return model.Route{}, err
 	}
@@ -783,28 +795,29 @@ func (r *ModelRepository) UpsertDiscovered(ctx context.Context, provider account
 		rows := make([]modelRouteModel, 0, len(upstreamModels))
 		for _, upstreamModel := range upstreamModels {
 			localID, capability := discoveredRouteDefaults(provider, upstreamModel)
+			capabilities := []model.Capability{capability}
+			if provider == account.ProviderBuild && capability == model.CapabilityImage && upstreamModel == "grok-imagine-image-2.0" {
+				capabilities = append(capabilities, model.CapabilityImageEdit)
+			}
 			publicID, ok := model.NormalizePublicID(provider, localID)
 			if !ok {
 				return fmt.Errorf("Provider %s 发现了无效模型 ID %q", provider, localID)
 			}
-			// Managed routes are idempotent by canonical public_id and capability.
-			// Manual targets with the same name remain independent pool members.
-			key := managedRouteKey{publicID: publicID, capability: capability}
-			if publicIDs[key] {
-				continue
-			}
-			// A discovered model whose canonical public ID is already reserved as
-			// another route compatibility alias cannot be inserted. Skip it and
-			// keep the rest of the batch: aborting here lets one historical rename
-			// permanently hide every future model of this provider.
-			if err := ensureModelPublicIDNotAlias(tx, publicID, 0); err != nil {
-				if errors.Is(err, repository.ErrConflict) {
+			for _, capability := range capabilities {
+				// 同名的生成与编辑分别保留路由及启停状态。
+				key := managedRouteKey{publicID: publicID, capability: capability}
+				if publicIDs[key] {
 					continue
 				}
-				return err
+				if err := ensureModelPublicIDNotAlias(tx, publicID, 0); err != nil {
+					if errors.Is(err, repository.ErrConflict) {
+						continue
+					}
+					return err
+				}
+				publicIDs[key] = true
+				rows = append(rows, modelRouteModel{PublicID: publicID, Provider: string(provider), UpstreamModel: upstreamModel, Capability: string(capability), Origin: string(model.OriginDiscovered), Enabled: true})
 			}
-			publicIDs[key] = true
-			rows = append(rows, modelRouteModel{PublicID: publicID, Provider: string(provider), UpstreamModel: upstreamModel, Capability: string(capability), Origin: string(model.OriginDiscovered), Enabled: true})
 		}
 		if len(rows) > 0 {
 			// Concurrent discovery is guarded by the managed-route partial unique index.
@@ -838,6 +851,9 @@ func discoveredRouteDefaults(provider account.Provider, upstreamModel string) (s
 			return upstreamModel, model.CapabilityChat
 		}
 	case account.ProviderBuild:
+		if upstreamModel == "grok-imagine-image-2.0" {
+			return upstreamModel, model.CapabilityImage
+		}
 		if upstreamModel == "grok-imagine-video-1.5" {
 			return upstreamModel, model.CapabilityVideo
 		}
@@ -1136,7 +1152,7 @@ func (r *ModelRepository) Create(ctx context.Context, value model.Route, account
 	if len(accountIDs) > 0 {
 		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationModelBindingChanged, Provider: value.Provider, UpstreamModel: value.UpstreamModel})
 	}
-	return r.Get(ctx, row.ID)
+	return r.getWithAvailability(ctx, row.ID)
 }
 
 func (r *ModelRepository) Update(ctx context.Context, value model.Route, accountIDs *[]uint64) (model.Route, error) {
@@ -1192,7 +1208,7 @@ func (r *ModelRepository) Update(ctx context.Context, value model.Route, account
 	if accountIDs != nil {
 		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationModelBindingChanged, Provider: storedProvider, UpstreamModel: storedUpstreamModel})
 	}
-	return r.Get(ctx, value.ID)
+	return r.getWithAvailability(ctx, value.ID)
 }
 
 func (r *ModelRepository) Delete(ctx context.Context, id uint64) error {

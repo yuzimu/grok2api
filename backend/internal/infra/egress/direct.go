@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// DirectXAIHost 将 x.ai 及其子域名固定直连，不匹配相似域名。
+// DirectXAIHost 标识默认直连的x.ai域名；Console租约保留配置代理，不匹配相似域名。
 func DirectXAIHost(host string) bool {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	return host == "x.ai" || strings.HasSuffix(host, ".x.ai")

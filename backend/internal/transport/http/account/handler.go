@@ -1503,6 +1503,17 @@ func (h *Handler) writeServiceError(c *gin.Context, code string, err error, fall
 		response.Error(c, http.StatusConflict, "accountConversionBusy", err.Error())
 	case errors.Is(err, accountapp.ErrWebAccountScriptBusy):
 		response.Error(c, http.StatusConflict, "webAccountScriptBusy", err.Error())
+	case errors.Is(err, accountapp.ErrConsoleUnlinked):
+		response.Error(c, http.StatusConflict, "consoleAccountUnlinked", "该 Console 账号尚未关联 Cursor，请先完成上游关联并核验额度")
+	case errors.Is(err, accountapp.ErrEgressBlocked):
+		var retry interface{ RetryAfterDuration() time.Duration }
+		if errors.As(err, &retry) {
+			seconds := (retry.RetryAfterDuration() + time.Second - 1) / time.Second
+			if seconds > 0 {
+				c.Header("Retry-After", strconv.FormatInt(int64(seconds), 10))
+			}
+		}
+		response.Error(c, http.StatusServiceUnavailable, "accountEgressBlocked", "当前出口被 Cloudflare 拦截，额度同步暂不可用")
 	default:
 		response.Error(c, fallbackStatus, code, fallbackMessage)
 	}

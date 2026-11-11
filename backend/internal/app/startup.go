@@ -116,6 +116,7 @@ func (s *startupState) acceptsTraffic() bool {
 	return s.phase == "running"
 }
 
+// readinessSnapshot 以运行态、账本和真实路由候选判断就绪，避免管理端全量统计阻塞探针。
 func readinessSnapshot(
 	ctx context.Context,
 	state *startupState,
@@ -183,7 +184,7 @@ func readinessSnapshot(
 	now := time.Now().UTC()
 	for _, route := range routes {
 		required[route.Provider] = true
-		if usable[route.Provider] || route.SupportedAccounts == 0 {
+		if usable[route.Provider] {
 			continue
 		}
 		candidates, listErr := accounts.ListRoutingCandidates(ctx, route.Provider, route.ID, route.UpstreamModel, providers.QuotaMode(route.Provider, route.UpstreamModel))
