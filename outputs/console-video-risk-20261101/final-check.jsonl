@@ -1,0 +1,3 @@
+{"cohort" : 571, "http400" : 15, "http402" : 471, "success" : 77, "other" : 8, "no_evidence" : 0, "marked" : 486, "missing_marks" : 0, "wrong_marks" : 0}
+{"current_console_total" : 571, "batch_jobs" : 555, "distinct_accounts" : 555, "pending" : 0, "wrong_routes" : 0, "missing_assets" : 0}
+{"non_console_manual_marks" : 0}

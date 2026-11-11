@@ -1,0 +1,16 @@
+HTTP/2 200 
+accept-ranges: bytes
+alt-svc: h3=":443"; ma=2592000
+cache-control: private, no-store
+content-disposition: inline; filename="video_H1wvAddqJBhMakXmLfEIwIcy.mp4"
+content-security-policy: default-src 'none'; sandbox
+content-type: video/mp4
+date: Sat, 24 Oct 2026 08:40:44 GMT
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: no-referrer
+server: Caddy
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-request-id: t-eR-Kgt1ZXRxiap
+content-length: 7402660
+

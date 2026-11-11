@@ -1,0 +1,10 @@
+{
+  "previous_image": "registry.cn-hongkong.aliyuncs.com/xbrd/grok2api@sha256:c2335fdaa345a20b63f6ce32c814722fe7d9ddec731703d41884c160893cd5b3",
+  "image": "registry.cn-hongkong.aliyuncs.com/xbrd/grok2api@sha256:b8af0fd20884ffd9d1761d2ef96c3f3c54989d9929471738a921592b2fd38993",
+  "active_jobs_before_rollout": 0,
+  "binary_sha256": "5b893279852472985ff55ec85b80d09f3e2523c15dd7f69f62a36bdb9d354027",
+  "ready_replicas": 1,
+  "updated_replicas": 1,
+  "generation": 102,
+  "observed_generation": 102
+}

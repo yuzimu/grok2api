@@ -114,6 +114,26 @@ func (r *AccountRepository) ReconcileProviderLinks(ctx context.Context, accountI
 	if accountID == 0 {
 		return repository.ErrNotFound
 	}
+	// 已完成的关系不再争抢全局写锁；真实关系变更仍在事务内重新检查并串行写入。
+	var linked struct {
+		Provider string
+		Console  bool
+		Build    bool
+		Web      bool
+	}
+	if err := r.db.db.WithContext(ctx).Model(&accountModel{}).
+		Select(`provider,
+			EXISTS (SELECT 1 FROM web_console_account_links WHERE web_account_id = provider_accounts.id) AS console,
+			EXISTS (SELECT 1 FROM account_provider_links WHERE web_account_id = provider_accounts.id) AS build,
+			(EXISTS (SELECT 1 FROM web_console_account_links WHERE console_account_id = provider_accounts.id)
+			 OR EXISTS (SELECT 1 FROM account_provider_links WHERE build_account_id = provider_accounts.id)) AS web`).
+		Where("id = ?", accountID).Take(&linked).Error; err != nil {
+		return mapError(err)
+	}
+	if (linked.Provider == string(account.ProviderWeb) && linked.Console && linked.Build) ||
+		(linked.Provider != string(account.ProviderWeb) && linked.Web) {
+		return nil
+	}
 	err := mapError(r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockAccountLinkMutation(tx); err != nil {
 			return err

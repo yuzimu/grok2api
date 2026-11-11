@@ -3,6 +3,7 @@ package relational
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chenyme/grok2api/backend/internal/domain/media"
@@ -10,7 +11,11 @@ import (
 	"gorm.io/gorm"
 )
 
-type MediaJobRepository struct{ db *Database }
+type MediaJobRepository struct {
+	db          *Database
+	terminalDir string
+	terminalMu  sync.Mutex
+}
 
 type MediaAssetRepository struct{ db *Database }
 
@@ -324,11 +329,20 @@ func (r *MediaJobRepository) GetMediaJobsByIDs(ctx context.Context, ids []string
 	return values, nil
 }
 
+// UpdateMediaJob 在终态写库前保存持久化收据，数据库恢复后仅补写，不重新生成。
 func (r *MediaJobRepository) UpdateMediaJob(ctx context.Context, value media.Job) error {
+	if r.terminalDir != "" && (value.Status == media.StatusCompleted || value.Status == media.StatusFailed) {
+		return r.writeTerminalMediaJob(ctx, value)
+	}
+	return r.updateMediaJob(ctx, value)
+}
+
+// updateMediaJob 保留认领令牌校验，避免失去租约的执行者覆盖新执行者。
+func (r *MediaJobRepository) updateMediaJob(ctx context.Context, value media.Job) error {
 	updates := mediaJobFromDomain(value)
 	query := r.db.db.WithContext(ctx).Model(&mediaJobModel{}).Where("id = ?", value.ID)
 	if value.ClaimToken != "" {
-		query = query.Where("claim_token = ?", value.ClaimToken)
+		query = query.Where("claim_token = ? AND status IN ?", value.ClaimToken, []string{string(media.StatusQueued), string(media.StatusInProgress)})
 	}
 	// InputJSON and InputImageCount are immutable creation metadata. Progress and
 	// terminal updates must not resend a multi-megabyte Base64 payload.
@@ -410,6 +424,9 @@ func (r *MediaJobRepository) SummarizeMediaJobs(ctx context.Context) (repository
 
 // ListUnrecordedTerminalMediaJobs 返回尚未完成审计写入的成功或失败任务。
 func (r *MediaJobRepository) ListUnrecordedTerminalMediaJobs(ctx context.Context, limit int) ([]media.Job, error) {
+	if err := r.flushTerminalMediaJobs(ctx); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
@@ -447,6 +464,9 @@ func (r *MediaJobRepository) MarkMediaJobUsageRecorded(ctx context.Context, id s
 }
 
 func (r *MediaJobRepository) ListRecoverableMediaJobs(ctx context.Context, limit int) ([]media.Job, error) {
+	if err := r.flushTerminalMediaJobs(ctx); err != nil {
+		return nil, err
+	}
 	var rows []mediaJobModel
 	now := time.Now().UTC()
 	// Recovery only enqueues IDs. The bounded worker reads one complete payload

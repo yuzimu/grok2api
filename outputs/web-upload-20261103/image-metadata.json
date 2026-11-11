@@ -1,0 +1,58 @@
+{
+  "buildx.build.provenance": {
+    "builder": {
+      "id": ""
+    },
+    "buildType": "https://mobyproject.org/buildkit@v1",
+    "materials": [
+      {
+        "uri": "pkg:docker/registry.cn-hongkong.aliyuncs.com/xbrd/grok2api?digest=sha256:c2335fdaa345a20b63f6ce32c814722fe7d9ddec731703d41884c160893cd5b3\u0026platform=linux%2Famd64",
+        "digest": {
+          "sha256": "c2335fdaa345a20b63f6ce32c814722fe7d9ddec731703d41884c160893cd5b3"
+        }
+      }
+    ],
+    "invocation": {
+      "configSource": {
+        "entryPoint": "Dockerfile"
+      },
+      "parameters": {
+        "frontend": "dockerfile.v0",
+        "locals": [
+          {
+            "name": "context"
+          },
+          {
+            "name": "dockerfile"
+          }
+        ],
+        "root": {
+          "configSource": {
+            "path": "Dockerfile"
+          },
+          "request": {
+            "args": {
+              "vcs:localdir:context": "outputs/web-upload-20261103",
+              "vcs:localdir:dockerfile": "outputs/web-upload-20261103",
+              "vcs:revision": "5c5ec66fec0586faa361067ba65e688e9b748cc0",
+              "vcs:source": "https://github.com/yuzimu/grok2api.git"
+            }
+          }
+        },
+        "compatibilityVersion": 20
+      },
+      "environment": {
+        "dockerfileVersion": "1.24.0",
+        "platform": "linux/arm64"
+      }
+    }
+  },
+  "buildx.build.ref": "default/default/njqut8ljlrjzu9f1dhb0h68hp",
+  "containerimage.descriptor": {
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "digest": "sha256:b8af0fd20884ffd9d1761d2ef96c3f3c54989d9929471738a921592b2fd38993",
+    "size": 856
+  },
+  "containerimage.digest": "sha256:b8af0fd20884ffd9d1761d2ef96c3f3c54989d9929471738a921592b2fd38993",
+  "image.name": "registry.cn-hongkong.aliyuncs.com/xbrd/grok2api:web-upload-20261103"
+}

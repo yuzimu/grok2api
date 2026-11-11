@@ -1,0 +1,10 @@
+{
+  "previous_image": "registry.cn-hongkong.aliyuncs.com/xbrd/grok2api@sha256:b8af0fd20884ffd9d1761d2ef96c3f3c54989d9929471738a921592b2fd38993",
+  "image": "registry.cn-hongkong.aliyuncs.com/xbrd/grok2api@sha256:7c224d414cc773d67a2c3bb4f858c3229c92a5b40bdc4d8d591f8b6149488153",
+  "binary_sha256": "361806fdca27d2d3b9bb7f92611cdf560468f6abcaa2ebc2e7473036674ad717",
+  "active_video_jobs": 0,
+  "ready_replicas": 1,
+  "image_route_id": 143,
+  "verified_request_id": "build-img-a961ab61fe814206",
+  "verified_provider": "grok_build"
+}

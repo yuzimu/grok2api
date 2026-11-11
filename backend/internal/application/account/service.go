@@ -42,6 +42,8 @@ var (
 	ErrConversionBusy      = errors.New("账号正在转换为 Grok Build")
 	ErrConflict            = errors.New("账号操作存在冲突")
 	ErrAccountPoolMismatch = errors.New("批量操作包含不属于当前号池的账号")
+	ErrConsoleUnlinked     = provider.ErrConsoleUnlinked
+	ErrEgressBlocked       = provider.ErrEgressBlocked
 )
 
 var ErrCredentialRefreshPermanent = errors.New("OAuth refresh token 已永久失效")
@@ -3136,11 +3138,13 @@ func (s *Service) ExhaustWebQuota(ctx context.Context, id uint64, mode string, r
 	return s.ExhaustQuota(ctx, id, mode, resetAt)
 }
 
+// RefreshQuota 同步指定账号额度并记录失败原因，供正式管理入口定位上游故障。
 func (s *Service) RefreshQuota(ctx context.Context, id uint64) ([]accountdomain.QuotaWindow, error) {
 	result, err, _ := s.quotaSyncs.Do("all:"+strconv.FormatUint(id, 10), func() (any, error) {
 		return s.refreshQuota(ctx, id)
 	})
 	if err != nil {
+		s.logger.Warn("account_quota_sync_failed", "account_id", id, "error", err)
 		return nil, err
 	}
 	refreshed, ok := result.(quotaRefreshResult)
@@ -3532,7 +3536,7 @@ func (s *Service) QueueQuotaRefresh(id uint64, mode string) {
 	if isWebImagineQuotaMode(mode) {
 		mode = accountdomain.QuotaGroupWebImagine
 	}
-	if id == 0 || (!isConsoleUsageQuotaMode(mode) && mode != "weekly" && mode != accountdomain.QuotaGroupWebImagine && !isWebChatQuotaMode(mode)) {
+	if id == 0 || (mode != "billing" && !isConsoleUsageQuotaMode(mode) && mode != "weekly" && mode != accountdomain.QuotaGroupWebImagine && !isWebChatQuotaMode(mode)) {
 		return
 	}
 	key := strconv.FormatUint(id, 10) + ":" + mode
@@ -3633,6 +3637,7 @@ func (s *Service) RunQuotaRefresh(ctx context.Context) {
 	workers.Wait()
 }
 
+// runQuotaRefresh 按共享代次同步额度；已删除、停用或待认证账号只清理待刷新状态，不重复调用上游。
 func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRequest) {
 	for {
 		s.quotaRefreshMu.Lock()
@@ -3692,23 +3697,46 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		}
 		refreshMode := request.mode
 		consoleMode := isConsoleUsageQuotaMode(request.mode)
-		skipUpstream := false
-		if windows, err := s.accounts.GetQuotaWindows(ctx, []uint64{request.accountID}); err == nil {
-			if consoleMode {
-				for _, window := range windows[request.accountID] {
-					if window.Mode == request.mode && window.SyncedAt != nil && s.now().UTC().Sub(window.SyncedAt.UTC()) < consoleQuotaRefreshMinInterval {
-						skipUpstream = true
-						break
-					}
+		billingMode := request.mode == "billing"
+		throttledMode := consoleMode || billingMode
+		credential, credentialErr := s.accounts.Get(ctx, request.accountID)
+		if credentialErr != nil && !errors.Is(credentialErr, repository.ErrNotFound) {
+			cancel()
+			s.logger.Warn("quota_refresh_account_read_failed", "account_id", request.accountID, "error", credentialErr)
+			s.deferQuotaRefresh(request.key)
+			return
+		}
+		inactive := errors.Is(credentialErr, repository.ErrNotFound) || !credential.Enabled || credential.AuthStatus != accountdomain.AuthStatusActive
+		skipUpstream := inactive
+		if !inactive && billingMode {
+			// 账单快照最多每分钟查询一次；保留本次刷新意图，不能因快照较新而丢弃尾随刷新。
+			if billing, err := s.accounts.GetBilling(ctx, request.accountID); err == nil {
+				delay := billing.SyncedAt.Add(time.Minute).Sub(s.now())
+				if delay > 0 {
+					cancel()
+					s.deferQuotaRefreshAfter(request.key, delay)
+					return
 				}
-			} else if request.mode != accountdomain.QuotaGroupWebImagine {
-				// Weekly remains a Grok Web capability. Console never inherits this
-				// legacy mode and always refreshes its authoritative /usage snapshot.
-				// Imagine 配额组走 /rest/media/imagine/quota_info，不可被改刷 weekly。
-				for _, window := range windows[request.accountID] {
-					if window.Mode == "weekly" {
-						refreshMode = "weekly"
-						break
+			}
+		}
+		if !inactive && !billingMode {
+			if windows, err := s.accounts.GetQuotaWindows(ctx, []uint64{request.accountID}); err == nil {
+				if consoleMode {
+					for _, window := range windows[request.accountID] {
+						if window.Mode == request.mode && window.SyncedAt != nil && s.now().UTC().Sub(window.SyncedAt.UTC()) < consoleQuotaRefreshMinInterval {
+							skipUpstream = true
+							break
+						}
+					}
+				} else if request.mode != accountdomain.QuotaGroupWebImagine {
+					// Weekly remains a Grok Web capability. Console never inherits this
+					// legacy mode and always refreshes its authoritative /usage snapshot.
+					// Imagine 配额组走 /rest/media/imagine/quota_info，不可被改刷 weekly。
+					for _, window := range windows[request.accountID] {
+						if window.Mode == "weekly" {
+							refreshMode = "weekly"
+							break
+						}
 					}
 				}
 			}
@@ -3727,7 +3755,9 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		}
 		if !skipUpstream && refreshErr == nil && acquired {
 			if err := s.syncPool.Do(ctx, func(workCtx context.Context) error {
-				if refreshMode == accountdomain.QuotaGroupWebImagine {
+				if billingMode {
+					refreshErr = s.refreshQueuedBilling(workCtx, request.accountID)
+				} else if refreshMode == accountdomain.QuotaGroupWebImagine {
 					var refreshed quotaRefreshResult
 					refreshed, refreshErr = s.refreshQuotaGroup(workCtx, request.accountID, refreshMode)
 					if refreshErr == nil {
@@ -3776,7 +3806,7 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		s.quotaRefreshMu.Unlock()
 		if localChanged || (s.quotaRefreshState != nil && currentShared != sharedGeneration) {
 			perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: "trailing"}, 1)
-			if consoleMode {
+			if throttledMode {
 				s.deferSuccessfulQuotaRefresh(request.key, true)
 				return
 			}
@@ -3790,7 +3820,7 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 				if clearErr != nil {
 					s.logger.Warn("quota_refresh_dirty_clear_failed", "account_id", request.accountID, "mode", request.mode, "error", clearErr)
 				}
-				if consoleMode {
+				if throttledMode {
 					s.deferSuccessfulQuotaRefresh(request.key, true)
 					return
 				}
@@ -3800,7 +3830,7 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		s.quotaRefreshMu.Lock()
 		state = s.quotaRefreshes[request.key]
 		if state != nil && state.generation == localGeneration {
-			if consoleMode {
+			if throttledMode && !inactive {
 				state.running = false
 				state.pending = false
 				state.failures = 0
@@ -3809,10 +3839,14 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 				delete(s.quotaRefreshes, request.key)
 			}
 			s.quotaRefreshMu.Unlock()
-			perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: "success"}, 1)
+			outcome := "success"
+			if inactive {
+				outcome = "inactive"
+			}
+			perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: outcome}, 1)
 			return
 		}
-		if consoleMode && state != nil {
+		if throttledMode && state != nil {
 			state.running = false
 			state.pending = true
 			state.failures = 0
@@ -3823,6 +3857,23 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		}
 		s.quotaRefreshMu.Unlock()
 	}
+}
+
+// refreshQueuedBilling 刷新活跃账号账单；延迟的可用快照不能解除上游已确认的额度阻断。
+func (s *Service) refreshQueuedBilling(ctx context.Context, id uint64) error {
+	credential, billing, err := s.fetchAndSaveBilling(ctx, id)
+	if err != nil {
+		return err
+	}
+	s.logger.Info("build_billing_refreshed", "account_id", id, "usage_percent", billing.CreditUsagePercent, "synced_at", billing.SyncedAt)
+	recovery, err := s.accounts.GetQuotaRecovery(ctx, id)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return err
+	}
+	if err == nil && recovery.Status == accountdomain.QuotaRecoveryStatusExhausted && !billing.IsExhausted(credential.MinimumRemaining) {
+		return nil
+	}
+	return s.reconcilePaidQuotaRecovery(ctx, credential, billing, false)
 }
 
 func (s *Service) deferQuotaRefresh(key string) {

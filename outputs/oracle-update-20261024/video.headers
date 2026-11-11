@@ -1,0 +1,18 @@
+HTTP/2 200 
+accept-ranges: bytes
+alt-svc: h3=":443"; ma=2592000
+cache-control: public, max-age=31536000, immutable
+content-disposition: inline; filename="vid_jrKC3p-3sUA_P2Kc4sMHZpHoTgLh4ul4.mp4"
+content-type: video/mp4
+date: Sat, 24 Oct 2026 10:01:40 GMT
+etag: "3f10f5eb5cc7e5c7bcb00953587d74f31222f719247dd3268d74c262c510a17d"
+last-modified: Sun, 11 Oct 2026 03:03:28 GMT
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: no-referrer
+server: Caddy
+server: openresty
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-request-id: AwsH6XcRHNK27EeW
+content-length: 2099034
+

@@ -1,0 +1,55 @@
+{
+  "inspected": 139,
+  "results": [
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/2dxzcq1bpnbxc.js",
+      "file": "b90144199f4758ca.js",
+      "matches": [
+        "quota_info",
+        "Too many requests"
+      ],
+      "sha256": "c3e0c46bd60f5ef9ab5ea53d5c767467dec63ffe1b7159d3e85f732de7f00333"
+    },
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/2a65i0r8fev5a.js",
+      "file": "6a8dd020144c135f.js",
+      "matches": [
+        "Too many requests"
+      ],
+      "sha256": "7b8df6eaa013a26e1d6e47250fbec7672f77d3b85fbd46b57ec7f9cee08e2318"
+    },
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/1pt-sv52283pt.js",
+      "file": "729da85bb799cec4.js",
+      "matches": [
+        "Too many requests"
+      ],
+      "sha256": "06913e947786a591061004255003616c482bf819e654a24f6a487a9857a9e4f5"
+    },
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/0kiitvpf6oeus.js",
+      "file": "3e74e490fbd3e85d.js",
+      "matches": [
+        "quota_info",
+        "video720p"
+      ],
+      "sha256": "fb927c713f655ff178f1d7d769385a3347b098b7f5b58f4e0bafaca97dd38e9e"
+    },
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/2b3pl8_em_zn2.js",
+      "file": "1ab4a354544f69d8.js",
+      "matches": [
+        "Too many requests"
+      ],
+      "sha256": "09327794f882cb04f6233d661f89499aca468d1c44df48f8cd7fa82d44541699"
+    },
+    {
+      "url": "https://cdn.grok.com/_next/static/chunks/1izlzeroxz3wj.js",
+      "file": "ceb6f26d6e79f349.js",
+      "matches": [
+        "video720p"
+      ],
+      "sha256": "215e2f7015285835407e8c4182b3e01fd2f1045b63a54811cca533b568e693f9"
+    }
+  ]
+}

@@ -66,6 +66,7 @@ type Adapter struct {
 	modelsETags    map[uint64]string
 	fallbackMarker FallbackMarker
 	uploadIssuer   VideoUploadIssuer
+	imageAssets    provider.ImageAssetStore
 	replay         *reasoningreplay.ReasoningReplay
 	// conversationReasoningCache bridges Chat/Messages tool calls to the
 	// upstream Responses reasoning proof. It is deliberately separate from
@@ -763,7 +764,7 @@ func (a *Adapter) ListModels(ctx context.Context, credential account.Credential)
 func (a *Adapter) NormalizeAccountModelCapabilities(models []string, billing *account.Billing, credential account.Credential) []string {
 	super := account.IsBuildSuper(credential, billing)
 	composer := credential.Provider == account.ProviderBuild && credential.AuthType == account.AuthTypeOAuth
-	result := make([]string, 0, len(models)+2)
+	result := make([]string, 0, len(models)+3)
 	seen := make(map[string]struct{}, len(models)+2)
 	hasVideo15 := false
 	hasGrok46 := false
@@ -795,6 +796,11 @@ func (a *Adapter) NormalizeAccountModelCapabilities(models []string, billing *ac
 	}
 	if super && !hasVideo15 {
 		result = append(result, buildVideoModel)
+	}
+	if super && composer {
+		if _, exists := seen[buildImageModel]; !exists {
+			result = append(result, buildImageModel)
+		}
 	}
 	if composer {
 		if _, exists := seen[modeldomain.GrokComposer25Fast]; !exists {

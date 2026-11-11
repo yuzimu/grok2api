@@ -1,0 +1,4 @@
+FROM grok2api:quota-base-20261101
+COPY grok2api-arm64 /app/grok2api
+LABEL org.opencontainers.image.revision="5c5ec66f-build-quota-20261101-r2"
+LABEL io.grok2api.source-sha256=""

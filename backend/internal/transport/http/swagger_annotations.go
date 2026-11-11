@@ -242,6 +242,7 @@ func swaggerDetectImageLayers() {}
 
 // swaggerGetImage godoc
 // @Summary 获取归档图片
+// @Description 无需 API Key 或 Cookie，可直接下载。
 // @Tags Images
 // @Produce image/png
 // @Param asset_id path string true "Asset ID"
@@ -298,3 +299,25 @@ func swaggerExtendVideo() {}
 // @Failure 404 {object} map[string]any
 // @Router /v1/videos/{request_id} [get]
 func swaggerGetVideo() {}
+
+// swaggerGetVideoContent godoc
+// @Summary 直接下载已完成视频
+// @Description 无需 API Key 或 Cookie；本地视频支持 Range 分段读取。
+// @Tags Videos
+// @Produce video/mp4
+// @Param request_id path string true "Request ID"
+// @Success 200 {file} binary
+// @Success 206 {file} binary
+// @Failure 404
+// @Router /v1/videos/{request_id}/content [get]
+func swaggerGetVideoContent() {}
+
+// swaggerHeadVideoContent godoc
+// @Summary 读取已完成视频的下载响应头
+// @Description 无需 API Key 或 Cookie，不返回文件正文。
+// @Tags Videos
+// @Param request_id path string true "Request ID"
+// @Success 200
+// @Failure 404
+// @Router /v1/videos/{request_id}/content [head]
+func swaggerHeadVideoContent() {}

@@ -175,9 +175,7 @@ func (a *Adapter) requestConsoleUsage(ctx context.Context, ssoToken string, sess
 	return response.StatusCode, data, nil
 }
 
-// loginWorkOS follows the dashboard login redirect chain by hand (the egress
-// client never follows redirects) and collects the WorkOS cookie triple from
-// the grok.com hops. Linked accounts finish without any interactive page.
+// loginWorkOS 沿可信跳转链收集 WorkOS Cookie，并将各域名的 Cloudflare 拦截归为出口故障。
 func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infraegress.Lease) (workosSession, error) {
 	origin := a.sessionOrigin()
 	base, err := url.Parse(origin)
@@ -237,14 +235,17 @@ func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infra
 			continue
 		}
 		if status == http.StatusForbidden {
+			if reason := cloudflareRejection(body); reason != "" {
+				if strings.EqualFold(target.Host, base.Host) {
+					lease.InvalidateClearance()
+				}
+				return workosSession{}, fmt.Errorf("%w: Console WorkOS 会话换取被 %s（host=%s）", errCloudflareRejected, reason, target.Hostname())
+			}
 			if strings.Contains(strings.ToLower(target.Host), "cursor") || strings.Contains(strings.ToLower(target.Host), "workos") {
 				return workosSession{}, a.classifyWorkOSSignIn(ctx, ssoToken, lease)
 			}
 			if !provider.IsDefinitiveAccountBlockBody(body) {
 				lease.InvalidateClearance()
-			}
-			if reason := cloudflareRejection(body); reason != "" {
-				return workosSession{}, fmt.Errorf("%w: Console WorkOS 会话换取被 %s", errCloudflareRejected, reason)
 			}
 			return workosSession{}, fmt.Errorf("Console WorkOS 会话换取返回 403")
 		}
@@ -262,16 +263,16 @@ func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infra
 	return workosSession{}, fmt.Errorf("Console WorkOS 跳转次数超过 %d", workosMaxRedirects)
 }
 
-// classifyWorkOSSignIn decides whether landing on Cursor's hosted sign-in is
-// definitive. cursorMerged=false (or absent) on grok.com's session means the
-// account was never unified and has no Console credits; a merged account that
-// still lands there is treated as a transient upstream fault.
+// classifyWorkOSSignIn 仅用明确的 cursorMerged=false 判定未关联，字段缺失不得触发账号失效或删除。
 func (a *Adapter) classifyWorkOSSignIn(ctx context.Context, ssoToken string, lease *infraegress.Lease) error {
 	merged, known, err := a.fetchCursorMerged(ctx, ssoToken, lease)
 	if err != nil {
 		return fmt.Errorf("Console WorkOS 会话换取跳转到 Cursor 登录页，关联状态读取失败: %w", err)
 	}
-	if known && merged {
+	if !known {
+		return fmt.Errorf("%w: Grok Session 未返回 cursorMerged，无法确认 Cursor 关联状态", errConsoleWorkOSMissing)
+	}
+	if merged {
 		return errors.New("Console WorkOS 会话换取跳转到 Cursor 登录页（cursorMerged=true，按瞬时故障处理）")
 	}
 	return errConsoleWorkOSUnlinked

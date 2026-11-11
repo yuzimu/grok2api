@@ -1,0 +1,13 @@
+[
+  {
+    "stage": "homepage",
+    "http": 200,
+    "bytes": 189297,
+    "account": 29174,
+    "proxy_node": 5
+  },
+  {
+    "stage": "blocked",
+    "error": "No verification meta"
+  }
+]

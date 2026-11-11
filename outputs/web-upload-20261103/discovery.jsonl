@@ -1,0 +1,8 @@
+{"type": "page", "status": 200, "bytes": 194181}
+{"type": "scripts", "count": 140}
+{"type": "bundle", "name": "a508dfb6d4606122.js", "url": "https://cdn.grok.com/_next/static/chunks/03-_8m491vbcm.js", "sha256": "9e94e5cafa8539e4ec3aab061bf58a93b6efa64b9a88fad60f4042e7fedcf135", "matches": ["IMAGINE_SELF_UPLOAD"]}
+{"type": "bundle", "name": "a4095bee47922824.js", "url": "https://cdn.grok.com/_next/static/chunks/19l3q07axb-a8.js", "sha256": "dc947a95a656b872a4a8874da88db76dbcec5f2f4eeba46b3f4652a487e691f1", "matches": ["upload-file-v2", "IMAGINE_SELF_UPLOAD"]}
+{"type": "bundle", "name": "33d75ddb2980f479.js", "url": "https://cdn.grok.com/_next/static/chunks/125ccbyezb-pz.js", "sha256": "1f9faaebfc704b1a28b0fd8d5b86c0d91d373a7f7ebf5020204850cd46f10e22", "matches": ["upload-file-v2", "file_source"]}
+{"type": "bundle", "name": "17f1b518915dc135.js", "url": "https://cdn.grok.com/_next/static/chunks/2nz-7_pf3nalw.js", "sha256": "c060b86e727a51ee0ddb789f87bb4cfcf4fb7aa0aa4e32a4dead913584c6a0e0", "matches": ["upload-file-v2"]}
+{"type": "bundle", "name": "6f8cbc138735c2fb.js", "url": "https://cdn.grok.com/_next/static/chunks/431z3fzknl7gs.js", "sha256": "5254efdc4038407ef7cf774bbffb4a0829dd8338f9de6cd4a0d81bbb13b0d8d5", "matches": ["file_source"]}
+{"type": "bundle", "name": "95e49f560788a8eb.js", "url": "https://cdn.grok.com/_next/static/chunks/2p7t85co1-zq0.js", "sha256": "070f1c8e726b9d5d61af4d7433b51b413c389024338871319fc3f1a16e8e3613", "matches": ["IMAGINE_SELF_UPLOAD"]}

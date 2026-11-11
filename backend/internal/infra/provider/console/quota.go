@@ -45,13 +45,7 @@ func (a *Adapter) SyncQuotaMode(ctx context.Context, credential account.Credenti
 	return account.QuotaWindow{}, fmt.Errorf("Console usage 响应缺少 %s 额度", consoleQuotaKind(mode))
 }
 
-// syncConsoleQuotas reads the weekly included-usage pool from the grok.com
-// dashboard. The legacy DPoP /v1/usage endpoint reports limit 0 for every
-// free account and says nothing about whether the account can be called.
-//
-// Chat, image and video all draw on the same cents budget, so the three
-// Console modes mirror one snapshot; routing, recovery and display keep
-// their per-mode shape while reading identical values.
+// syncConsoleQuotas 经账号所属 Console 出口读取 grok.com 周额度，三个媒体模式共享预算。
 func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Credential) ([]account.QuotaWindow, time.Time, error) {
 	ssoToken, err := a.cipher.Decrypt(credential.EncryptedAccessToken)
 	if err != nil {
@@ -59,9 +53,8 @@ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Cred
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, consoleQuotaTimeout)
 	defer cancel()
-	// The dashboard is served by grok.com, so it shares the Web scope's exit,
-	// browser fingerprint and Clearance, exactly like the Session identity sync.
-	lease, err := a.egress.AcquireCredential(requestCtx, egressdomain.ScopeWeb, credential)
+	// 查询域名不改变账号的出口授权，绑定 Console 节点不能被当作 Web 节点使用。
+	lease, err := a.egress.AcquireCredential(requestCtx, egressdomain.ScopeConsole, credential)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
@@ -74,17 +67,17 @@ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Cred
 		if errors.Is(err, errCloudflareRejected) {
 			delay, opened := a.breaker.trip(lease.NodeID)
 			if opened {
-				a.logger().Warn("console_quota_egress_blocked", "egress_node_id", lease.NodeID, "pause", delay, "error", err)
+				a.logger().Warn("console_quota_egress_blocked", "egress_node_id", lease.NodeID, "account_id", credential.ID, "pause", delay, "error", err)
 			}
 			return nil, time.Time{}, &egressBlockedError{retryAfter: delay}
 		}
 		if !errors.Is(err, provider.ErrUnauthorized) {
-			a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeWeb, lease.NodeID, 0, err)
+			a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeConsole, lease.NodeID, 0, err)
 		}
 		return nil, time.Time{}, err
 	}
 	a.breaker.reset(lease.NodeID)
-	a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeWeb, lease.NodeID, http.StatusOK, nil)
+	a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeConsole, lease.NodeID, http.StatusOK, nil)
 	now := time.Now().UTC()
 	return consoleQuotaWindows(credential.ID, usage, now), now, nil
 }

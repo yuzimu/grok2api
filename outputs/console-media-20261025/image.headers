@@ -1,0 +1,15 @@
+HTTP/2 200 
+alt-svc: h3=":443"; ma=2592000
+cache-control: public, max-age=31536000, immutable
+content-type: image/jpeg
+date: Sun, 25 Oct 2026 03:43:55 GMT
+etag: "5de0a10d34b6ab239c0c4334f54f2d47c470a38f3caca49fe15e5c702f7c99fc"
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: no-referrer
+server: Caddy
+server: openresty
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-request-id: pLIYQmOSeU6ea1Ge
+content-length: 136680
+

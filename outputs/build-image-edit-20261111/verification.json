@@ -1,0 +1,30 @@
+{
+  "results": [
+    {
+      "http": 200,
+      "request_id": "build-edit-e3f78b798b8244",
+      "data": {
+        "created": 1794359613,
+        "data": [
+          {
+            "mime_type": "image/jpeg",
+            "revised_prompt": "",
+            "url": "https://grok.ai.hxeos.com/v1/media/images/img_hovcJRCDB44vYLALUAS_MxBJO-RL3Eyr"
+          }
+        ],
+        "usage": {
+          "cost_in_usd_ticks": 500000000
+        }
+      }
+    },
+    {
+      "download_http": 200,
+      "download_type": "image/jpeg",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "bytes": 167387
+    }
+  ],
+  "audit": "grok_build|85065|200|"
+}

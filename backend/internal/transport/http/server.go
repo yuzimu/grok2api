@@ -193,6 +193,7 @@ func New(deps Dependencies) *gin.Engine {
 		inferenceHandler.SetPublicAPIBaseURLResolver(deps.Settings.PublicAPIBaseURL)
 	}
 	inferenceHandler.Register(v1)
+	inferenceHandler.RegisterPublic(router)
 	registerFrontend(router, deps.FrontendStaticPath)
 	return router
 }

@@ -1,0 +1,38 @@
+{
+  "cohort": 578,
+  "generation_requests": 566,
+  "success": 92,
+  "success_rate_percent": 15.92,
+  "submitted_success_rate_percent": 16.25,
+  "outcomes": {
+    "generation_rejected": 474,
+    "auth_exception": 9,
+    "success": 92,
+    "key_setup_unavailable": 3
+  },
+  "generation_http": {
+    "402": 474,
+    "not_submitted": 12,
+    "200": 92
+  },
+  "download_failures": 0,
+  "duplicate_generation_requests": 0,
+  "first_event": "2026-11-01T04:40:26.142364+00:00",
+  "last_result": "2026-11-01T04:44:45.478117+00:00",
+  "proxy_failed_ids": [
+    86109,
+    86526,
+    86593,
+    86604,
+    86633,
+    86728,
+    86785,
+    86791,
+    86807
+  ],
+  "key_unavailable_ids": [
+    87039,
+    87041,
+    87042
+  ]
+}

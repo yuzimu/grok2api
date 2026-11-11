@@ -1,0 +1,20 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "postgresql",
+            "livenessProbe": {
+              "timeoutSeconds": 5,
+              "failureThreshold": 6
+            },
+            "readinessProbe": {
+              "timeoutSeconds": 5
+            }
+          }
+        ]
+      }
+    }
+  }
+}

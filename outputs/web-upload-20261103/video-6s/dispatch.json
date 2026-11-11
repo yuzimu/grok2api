@@ -1,0 +1,8 @@
+{
+  "model": "Web/grok-imagine-video-1.5",
+  "duration": 6,
+  "resolution": "720p",
+  "aspect_ratio": "9:16",
+  "reference_count": 1,
+  "reference_sha256": "aa340c4577a7faf9688a03541bacda108f9cec6a9f363da43fc1a6b6c4a0c08f"
+}

@@ -1,0 +1,9 @@
+{"phase": "identity_audit", "accounts": 578, "unique_keys": 578, "bindings": {"5": 578}}
+{"phase": "candidate_probe", "node": 5, "account": 86094, "round": 1, "http": 200, "ip": "209.50.183.167", "peer": "10.43.98.242"}
+{"phase": "candidate_probe", "node": 5, "account": 86094, "round": 2, "http": 200, "ip": "209.50.183.167", "peer": "10.43.98.242"}
+{"phase": "candidate_probe", "node": 5, "account": 86095, "round": 1, "http": 200, "ip": "216.26.242.204", "peer": "10.43.98.242"}
+{"phase": "candidate_probe", "node": 5, "account": 86095, "round": 2, "http": 200, "ip": "216.26.242.204", "peer": "10.43.98.242"}
+{"phase": "backup", "server": "xbrd-newapi", "path": "/var/backups/grok2api-console-sticky-20261101T042615Z/nodes-before.json.gz"}
+{"phase": "configured", "id": 5, "scope": "grok_web", "pool": true}
+{"phase": "configured", "id": 6, "scope": "grok_console", "pool": true}
+{"phase": "verified", "nodes": [5, 6], "accounts": 578, "unique_keys": 578, "media_requests": 0}

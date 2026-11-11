@@ -1,0 +1,73 @@
+--- a/backend/internal/infra/provider/provider.go
++++ b/backend/internal/infra/provider/provider.go
+@@ -77,6 +77,8 @@
+ 	// It is not account-failover eligible because retrying deterministic local
+ 	// validation or configuration failures against another credential is useless.
+ 	VideoStagePrepare VideoStage = "prepare"
++	// VideoStageUpload 表示参考素材上传失败，视频创建请求尚未发送。
++	VideoStageUpload VideoStage = "upload"
+ 	// VideoStageCreate means the upstream explicitly rejected the create request.
+ 	// Account failover is safe only for the retryable 4xx statuses selected by
+ 	// the gateway; 5xx responses remain indeterminate because work may already
+--- a/backend/internal/infra/provider/web/video.go
++++ b/backend/internal/infra/provider/web/video.go
+@@ -673,6 +673,7 @@
+ 	return provider.VideoResult{}, false, nil
+ }
+ 
++// prepareVideoReference 区分素材上传失败与视频提交失败，返回已上传的参考图 URI。
+ func (a *Adapter) prepareVideoReference(ctx context.Context, cfg Config, lease *egress.Lease, token, value string) (string, error) {
+ 	value = strings.TrimSpace(value)
+ 	if value == "" {
+@@ -684,7 +685,7 @@
+ 	}
+ 	uploaded, err := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "video_reference_upload")
+ 	if err != nil {
+-		return "", err
++		return "", provider.WrapVideoStage(provider.VideoStageUpload, 0, err)
+ 	}
+ 	if uploaded.URI == "" {
+ 		return "", fmt.Errorf("上传视频参考图片后未返回 fileUri")
+@@ -692,6 +693,7 @@
+ 	return uploaded.URI, nil
+ }
+ 
++// prepareVideoAsset 保留参考图上传阶段，避免将上传错误误判为已提交视频。
+ func (a *Adapter) prepareVideoAsset(ctx context.Context, cfg Config, lease *egress.Lease, token, value string) (uploadedFile, error) {
+ 	value = strings.TrimSpace(value)
+ 	if value == "" {
+@@ -703,7 +705,7 @@
+ 	}
+ 	uploaded, err := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "video_reference_upload")
+ 	if err != nil {
+-		return uploadedFile{}, err
++		return uploadedFile{}, provider.WrapVideoStage(provider.VideoStageUpload, 0, err)
+ 	}
+ 	if uploaded.URI == "" {
+ 		return uploadedFile{}, fmt.Errorf("上传视频参考图片后未返回 fileUri")
+--- a/backend/internal/application/gateway/video.go
++++ b/backend/internal/application/gateway/video.go
+@@ -1120,7 +1120,7 @@
+ 		failureHandled := false
+ 		retriableCreate := false
+ 		stage, hasStage := provider.VideoErrorStage(err)
+-		safeCreateFailure := hasStage && stage == provider.VideoStageCreate
++		safeCreateFailure := hasStage && (stage == provider.VideoStageCreate || stage == provider.VideoStageUpload)
+ 		status, hasStatus := provider.ErrorHTTPStatus(err)
+ 		if errors.Is(err, provider.ErrUnauthorized) {
+ 			if lease.Credential.AuthType == account.AuthTypeSSO {
+@@ -1175,10 +1175,11 @@
+ 				failureHandled = true
+ 				retriableCreate = safeCreateFailure
+ 			case status >= http.StatusInternalServerError:
+-				// A 5xx may be returned after the upstream accepted the job. Never
+-				// switch accounts without an idempotency guarantee.
++				// 只有明确发生在参考素材上传阶段的临时 5xx 可换号，避免重复创建视频。
+ 				failureHandled = true
+-				retriableCreate = false
++				retriableCreate = hasStage && stage == provider.VideoStageUpload &&
++					(status == http.StatusInternalServerError || status == http.StatusBadGateway ||
++						status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout)
+ 			default:
+ 				s.selector.MarkFailure(failureCtx, lease.Credential, status, 0)
+ 				failureHandled = true

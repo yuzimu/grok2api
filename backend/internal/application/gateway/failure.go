@@ -27,8 +27,7 @@ type UpstreamFailure struct {
 	QuotaExhausted         bool
 	FreeQuotaExhausted     bool
 	ModelQuotaExhausted    bool
-	// SpendingLimitBlocked 表示付费账号被 spending-limit 永久阻断（402 personal-team-blocked:spending-limit），
-	// 账单周期内不会自动恢复，适合直接标 reauthRequired 出池。
+	// SpendingLimitBlocked 表示账号触发 spending-limit；记录额度恢复状态，不标记凭据失效。
 	SpendingLimitBlocked bool
 	// NoCreditsOrLicenses marks Console's 403 for accounts that were never
 	// granted credits. It is permanent for Console and handled as a dead account.
@@ -109,6 +108,14 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 		failure.HTTPStatus = http.StatusBadGateway
 	}
 	metadataText := strings.ToLower(strings.Join([]string{upstreamCode, upstreamType, upstreamMessage}, " "))
+	if isSafetyRejection(metadataText) || isSafetyRejection(string(body)) {
+		failure.HTTPStatus = http.StatusBadRequest
+		failure.Code, failure.UpstreamCode = provider.ContentPolicyCode, provider.ContentPolicyCode
+		failure.PublicMessage = provider.ContentPolicyMessage
+		failure.SafetyRejection, failure.RequestScopedForbidden = true, true
+		failure.Fingerprint = "400:" + provider.ContentPolicyCode
+		return failure
+	}
 	switch status {
 	case http.StatusUnauthorized:
 		failure.Code = "upstream_unauthorized"
@@ -135,12 +142,6 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 			failure.RequestScopedForbidden = true
 			break
 		}
-		// Safety denials are request-scoped: inspect both structured metadata and the raw body
-		// so SAFETY_CHECK_TYPE_* markers still match when they only appear in nested text.
-		if isSafetyRejection(metadataText) || isSafetyRejection(string(body)) {
-			failure.SafetyRejection = true
-			break
-		}
 		if isRequestScopedForbidden(upstreamCode, metadataText) {
 			failure.RequestScopedForbidden = true
 			break
@@ -158,6 +159,17 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 		failure.NoCreditsOrLicenses = provider.IsConsoleNoCreditsText(metadataText) || provider.IsConsoleNoCreditsText(string(body))
 		failure.AccountScoped = failure.NoCreditsOrLicenses || failure.AccountBlocked || failure.PermanentAccountDenial || failure.QuotaExhausted || failure.CredentialRejected || isAccountScopedForbidden(metadataText)
 	case http.StatusBadRequest:
+		// Key 拒绝属于账号错误，不能按普通参数错误终止换号。
+		if isIncorrectAPIKeyText(metadataText) || isIncorrectAPIKeyText(string(body)) {
+			failure.Code = "invalid_argument"
+			failure.AccountScoped = true
+			if upstreamMessage != "" {
+				failure.PublicMessage = upstreamMessage
+			} else {
+				failure.PublicMessage = "请求参数无效"
+			}
+			break
+		}
 		if isRequestScopedForbidden(upstreamCode, metadataText) {
 			failure.Code = "invalid_argument"
 			failure.RequestScopedForbidden = true
@@ -264,12 +276,12 @@ func isPermanentAccountDenial(text string) bool {
 // isSafetyRejection identifies request-level content safety denials that must
 // be returned to the client without account rotation or invalidation.
 func isSafetyRejection(text string) bool {
-	if text == "" {
-		return false
-	}
-	lower := strings.ToLower(text)
-	return strings.Contains(lower, "content violates usage guidelines") ||
-		strings.Contains(lower, "safety_check_type_")
+	return provider.IsContentPolicyRejection(text)
+}
+
+// isIncorrectAPIKeyText 识别上游对当前账号 API Key 的明确拒绝。
+func isIncorrectAPIKeyText(text string) bool {
+	return strings.Contains(strings.ToLower(text), "incorrect api key")
 }
 
 // isRequestScopedForbidden recognizes only high-confidence request-level

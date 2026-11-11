@@ -1,0 +1,1281 @@
+diff --git a/README.md b/README.md
+index 6af9ddb4..39e12542 100644
+--- a/README.md
++++ b/README.md
+@@ -360,7 +360,7 @@ Stored responses and compact depend on the selected Provider. The signed-in admi
+ 
+ Media multipart requests are limited to 32 MiB total, 64 parts, and 20 MiB per file, subject to any lower server body limit. JPEG, PNG, static WebP, and GIF files require matching declared MIME types (or `application/octet-stream`), valid dimensions, and successful full decoding before any job or upstream upload. Each dimension is limited to 8192 and decoded pixels to 16,777,216; GIFs are additionally limited to 128 frames and the same cumulative pixel budget. WebP uses the official `golang.org/x/image/webp` decoder; animated WebP and invalid image data are rejected. Existing JSON data URL handling is unchanged. Filenames do not determine media type. Invalid numbers, duplicate scalar fields, and unsupported multipart options are rejected.
+ 
+-`POST /v1/videos` returns an OpenAI-style video object with `id`, `object: "video"`, `model`, and `status`. The existing `/v1/videos/generations`, `/edits`, and `/extensions` creation paths retain their `{"request_id":"..."}` contract. Shared `GET /v1/videos/{id}` returns `queued`, `in_progress`, `completed`, or `failed`, plus real task timestamps, progress, duration as a `seconds` string when known, and `size` when the stored aspect ratio/resolution can be expressed exactly in pixels. Completed jobs retain `video.url` and expose `content_url`; authenticated video bytes are available at `/v1/videos/{id}/content`. Media support is limited to the options documented above, not full OpenAI media compatibility. There are no video list, delete, or cancel endpoints.
++`POST /v1/videos` returns an OpenAI-style video object with `id`, `object: "video"`, `model`, and `status`. The existing `/v1/videos/generations`, `/edits`, and `/extensions` creation paths retain their `{"request_id":"..."}` contract. Shared `GET /v1/videos/{id}` returns `queued`, `in_progress`, `completed`, or `failed`, plus real task timestamps, progress, duration as a `seconds` string when known, and `size` when the stored aspect ratio/resolution can be expressed exactly in pixels. Completed jobs retain `video.url` and expose `content_url`. Returned image and video links, including `/v1/media/images/{asset_id}`, `/v1/media/videos/{asset_id}`, and `/v1/videos/{id}/content`, support direct GET/HEAD downloads without an API key or cookie. Local video content supports byte ranges. Generation, task metadata, and management endpoints require authentication. Media support is limited to the options documented above, not full OpenAI media compatibility. There are no video list, delete, or cancel endpoints.
+ 
+ `/v1/audio/transcriptions` supports `json` (default), `verbose_json`, and `text`. Video edits resolve to Console `grok-imagine-video`. Video extensions also support Web `grok-imagine-video-1.5`: provide `video_extension_start_time` with the source video's absolute end timestamp; the gateway uploads the source video into the selected Web account before starting a new extension conversation. Web extension `duration` is the added segment length from 6 to 10 seconds. Custom public model names remain supported. Monetary billing is applied only when the gateway can reliably measure the official pricing unit: TTS is reserved and settled from its input character count, while REST and streaming STT are settled from the actual audio duration returned by a successful response. Because STT duration is known only after completion, concurrent requests may briefly take a billing-limited key beyond its spend limit. Realtime, video edits/extensions, and custom routes without a recognized official price are currently audited as unpriced; they remain callable and do not consume the spend limit.
+ 
+diff --git a/README.zh-CN.md b/README.zh-CN.md
+index 9562e0d4..b171237a 100644
+--- a/README.zh-CN.md
++++ b/README.zh-CN.md
+@@ -332,7 +332,7 @@ stored response 和 compact 取决于最终 Provider。登录管理端后可在
+ 
+ 媒体 multipart 总请求上限 32 MiB、最多 64 段、每文件最多 20 MiB，同时遵守服务端更低的请求体上限。JPEG、PNG、静态 WebP、GIF 文件须声明匹配的 MIME 或 `application/octet-stream`，在任务创建及上游上传前先校验尺寸预算，再完整解码。单边最多 8192，解码像素最多 16,777,216；GIF 最多 128 帧且累计像素遵守同一预算。WebP 使用官方 `golang.org/x/image/webp` decoder，动画 WebP 和损坏图片被拒绝；原有 JSON data URL 路径不变。不按文件名识别图片。非法数值、重复标量和不支持的 multipart 选项明确报错。
+ 
+-`POST /v1/videos` 返回包含 `id`、`object: "video"`、`model`、`status` 的 OpenAI 风格视频对象。原有 `/v1/videos/generations`、`/edits`、`/extensions` 创建入口保持 `{"request_id":"..."}` 契约。共用的 `GET /v1/videos/{id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`，附带任务真实时间戳、进度、已知时长的 `seconds` 字符串，以及保存的比例和分辨率能精确表示时的像素 `size`。完成任务保留 `video.url` 并提供 `content_url`，鉴权视频内容入口为 `/v1/videos/{id}/content`。媒体能力仅限上述明确支持的选项，不是完整的 OpenAI 媒体兼容；未提供视频 list、delete 或 cancel 接口。
++`POST /v1/videos` 返回包含 `id`、`object: "video"`、`model`、`status` 的 OpenAI 风格视频对象。原有 `/v1/videos/generations`、`/edits`、`/extensions` 创建入口保持 `{"request_id":"..."}` 契约。共用的 `GET /v1/videos/{id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`，附带任务真实时间戳、进度、已知时长的 `seconds` 字符串，以及保存的比例和分辨率能精确表示时的像素 `size`。完成任务保留 `video.url` 并提供 `content_url`。返回的图片和视频链接，包括 `/v1/media/images/{asset_id}`、`/v1/media/videos/{asset_id}` 和 `/v1/videos/{id}/content`，均支持无需 API Key 或 Cookie 的 GET/HEAD 直接下载，本地视频支持 Range 分段读取。生成、任务元数据查询和管理接口仍需鉴权。媒体能力仅限上述明确支持的选项，不是完整的 OpenAI 媒体兼容；未提供视频 list、delete 或 cancel 接口。
+ 
+ `/v1/audio/transcriptions` 支持 `json`（默认）、`verbose_json` 和 `text`。视频编辑按实际路由校验 Console `grok-imagine-video`。视频延长还支持 Web `grok-imagine-video-1.5`：请求需用 `video_extension_start_time` 提供源视频的绝对结束时间，网关会先把源视频上传到选中的 Web 账号，再新建延长会话；Web 的 `duration` 表示本次新增片段时长，范围 6 到 10 秒。对外模型名仍可自定义。金额计费以网关能够可靠测量的官方计价单位为准：TTS 按输入字符数预留并结算，REST 与流式 STT 按成功响应返回的实际音频时长结算。STT 时长只能在请求完成后获得，因此并发中的请求可能使有限额 Key 短暂超过金额上限。Realtime、视频编辑与延长，以及未收录官方定价的自定义路由当前记录为“未计费”，保持可调用且不消耗金额额度。
+ 
+diff --git a/backend/docs/docs.go b/backend/docs/docs.go
+index 70bfb8b0..d5a695cd 100644
+--- a/backend/docs/docs.go
++++ b/backend/docs/docs.go
+@@ -122,8 +122,10 @@ const docTemplate = `{
+                         "BearerAuth": []
+                     }
+                 ],
++                "description": "支持原 JSON image/images URL 对象（包括 data URL），或 multipart 的 image/image[] 文件。multipart 标量 n、stream、partial_images 等进入同一业务校验；selection_regions/multi_region_edits 使用 JSON 表单值。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。n 仅支持 1，quality 仅支持 low/medium。mask、background、input_fidelity、output_format、output_compression、user 不支持并明确报错。",
+                 "consumes": [
+-                    "application/json"
++                    "application/json",
++                    "multipart/form-data"
+                 ],
+                 "produces": [
+                     "application/json"
+@@ -255,6 +257,7 @@ const docTemplate = `{
+         },
+         "/v1/media/images/{asset_id}": {
+             "get": {
++                "description": "无需 API Key 或 Cookie，可直接下载。",
+                 "produces": [
+                     "image/png"
+                 ],
+@@ -543,6 +546,54 @@ const docTemplate = `{
+                 }
+             }
+         },
++        "/v1/videos": {
++            "post": {
++                "security": [
++                    {
++                        "BearerAuth": []
++                    }
++                ],
++                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
++                "consumes": [
++                    "application/json",
++                    "multipart/form-data"
++                ],
++                "produces": [
++                    "application/json"
++                ],
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "创建异步视频任务",
++                "parameters": [
++                    {
++                        "description": "请求",
++                        "name": "request",
++                        "in": "body",
++                        "required": true,
++                        "schema": {
++                            "$ref": "#/definitions/httpserver.SwaggerVideoGenerationRequest"
++                        }
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK",
++                        "schema": {
++                            "type": "object",
++                            "additionalProperties": true
++                        }
++                    },
++                    "400": {
++                        "description": "Bad Request",
++                        "schema": {
++                            "type": "object",
++                            "additionalProperties": true
++                        }
++                    }
++                }
++            }
++        },
+         "/v1/videos/edits": {
+             "post": {
+                 "security": [
+@@ -646,8 +697,10 @@ const docTemplate = `{
+                         "BearerAuth": []
+                     }
+                 ],
++                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
+                 "consumes": [
+-                    "application/json"
++                    "application/json",
++                    "multipart/form-data"
+                 ],
+                 "produces": [
+                     "application/json"
+@@ -672,9 +725,7 @@ const docTemplate = `{
+                         "description": "OK",
+                         "schema": {
+                             "type": "object",
+-                            "additionalProperties": {
+-                                "type": "string"
+-                            }
++                            "additionalProperties": true
+                         }
+                     },
+                     "400": {
+@@ -727,6 +778,68 @@ const docTemplate = `{
+                     }
+                 }
+             }
++        },
++        "/v1/videos/{request_id}/content": {
++            "get": {
++                "description": "无需 API Key 或 Cookie；本地视频支持 Range 分段读取。",
++                "produces": [
++                    "video/mp4"
++                ],
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "直接下载已完成视频",
++                "parameters": [
++                    {
++                        "type": "string",
++                        "description": "Request ID",
++                        "name": "request_id",
++                        "in": "path",
++                        "required": true
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK",
++                        "schema": {
++                            "type": "file"
++                        }
++                    },
++                    "206": {
++                        "description": "Partial Content",
++                        "schema": {
++                            "type": "file"
++                        }
++                    },
++                    "404": {
++                        "description": "Not Found"
++                    }
++                }
++            },
++            "head": {
++                "description": "无需 API Key 或 Cookie，不返回文件正文。",
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "读取已完成视频的下载响应头",
++                "parameters": [
++                    {
++                        "type": "string",
++                        "description": "Request ID",
++                        "name": "request_id",
++                        "in": "path",
++                        "required": true
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK"
++                    },
++                    "404": {
++                        "description": "Not Found"
++                    }
++                }
++            }
+         }
+     },
+     "definitions": {
+@@ -775,6 +888,10 @@ const docTemplate = `{
+                     "type": "string",
+                     "example": "Change the background to black"
+                 },
++                "quality": {
++                    "type": "string",
++                    "example": "medium"
++                },
+                 "resolution": {
+                     "type": "string",
+                     "example": "1k"
+@@ -943,6 +1060,9 @@ const docTemplate = `{
+                 "image": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
++                "input_reference": {
++                    "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
++                },
+                 "last_frame": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
+@@ -970,6 +1090,14 @@ const docTemplate = `{
+                     "type": "string",
+                     "example": "720p"
+                 },
++                "seconds": {
++                    "type": "string",
++                    "example": "8"
++                },
++                "size": {
++                    "type": "string",
++                    "example": "1280x720"
++                },
+                 "video": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
+diff --git a/backend/docs/swagger.json b/backend/docs/swagger.json
+index a182f64d..a47f9cff 100644
+--- a/backend/docs/swagger.json
++++ b/backend/docs/swagger.json
+@@ -115,8 +115,10 @@
+                         "BearerAuth": []
+                     }
+                 ],
++                "description": "支持原 JSON image/images URL 对象（包括 data URL），或 multipart 的 image/image[] 文件。multipart 标量 n、stream、partial_images 等进入同一业务校验；selection_regions/multi_region_edits 使用 JSON 表单值。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。n 仅支持 1，quality 仅支持 low/medium。mask、background、input_fidelity、output_format、output_compression、user 不支持并明确报错。",
+                 "consumes": [
+-                    "application/json"
++                    "application/json",
++                    "multipart/form-data"
+                 ],
+                 "produces": [
+                     "application/json"
+@@ -248,6 +250,7 @@
+         },
+         "/v1/media/images/{asset_id}": {
+             "get": {
++                "description": "无需 API Key 或 Cookie，可直接下载。",
+                 "produces": [
+                     "image/png"
+                 ],
+@@ -536,6 +539,54 @@
+                 }
+             }
+         },
++        "/v1/videos": {
++            "post": {
++                "security": [
++                    {
++                        "BearerAuth": []
++                    }
++                ],
++                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
++                "consumes": [
++                    "application/json",
++                    "multipart/form-data"
++                ],
++                "produces": [
++                    "application/json"
++                ],
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "创建异步视频任务",
++                "parameters": [
++                    {
++                        "description": "请求",
++                        "name": "request",
++                        "in": "body",
++                        "required": true,
++                        "schema": {
++                            "$ref": "#/definitions/httpserver.SwaggerVideoGenerationRequest"
++                        }
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK",
++                        "schema": {
++                            "type": "object",
++                            "additionalProperties": true
++                        }
++                    },
++                    "400": {
++                        "description": "Bad Request",
++                        "schema": {
++                            "type": "object",
++                            "additionalProperties": true
++                        }
++                    }
++                }
++            }
++        },
+         "/v1/videos/edits": {
+             "post": {
+                 "security": [
+@@ -639,8 +690,10 @@
+                         "BearerAuth": []
+                     }
+                 ],
++                "description": "JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射 resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image 相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原 reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos 返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed 状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。",
+                 "consumes": [
+-                    "application/json"
++                    "application/json",
++                    "multipart/form-data"
+                 ],
+                 "produces": [
+                     "application/json"
+@@ -665,9 +718,7 @@
+                         "description": "OK",
+                         "schema": {
+                             "type": "object",
+-                            "additionalProperties": {
+-                                "type": "string"
+-                            }
++                            "additionalProperties": true
+                         }
+                     },
+                     "400": {
+@@ -720,6 +771,68 @@
+                     }
+                 }
+             }
++        },
++        "/v1/videos/{request_id}/content": {
++            "get": {
++                "description": "无需 API Key 或 Cookie；本地视频支持 Range 分段读取。",
++                "produces": [
++                    "video/mp4"
++                ],
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "直接下载已完成视频",
++                "parameters": [
++                    {
++                        "type": "string",
++                        "description": "Request ID",
++                        "name": "request_id",
++                        "in": "path",
++                        "required": true
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK",
++                        "schema": {
++                            "type": "file"
++                        }
++                    },
++                    "206": {
++                        "description": "Partial Content",
++                        "schema": {
++                            "type": "file"
++                        }
++                    },
++                    "404": {
++                        "description": "Not Found"
++                    }
++                }
++            },
++            "head": {
++                "description": "无需 API Key 或 Cookie，不返回文件正文。",
++                "tags": [
++                    "Videos"
++                ],
++                "summary": "读取已完成视频的下载响应头",
++                "parameters": [
++                    {
++                        "type": "string",
++                        "description": "Request ID",
++                        "name": "request_id",
++                        "in": "path",
++                        "required": true
++                    }
++                ],
++                "responses": {
++                    "200": {
++                        "description": "OK"
++                    },
++                    "404": {
++                        "description": "Not Found"
++                    }
++                }
++            }
+         }
+     },
+     "definitions": {
+@@ -768,6 +881,10 @@
+                     "type": "string",
+                     "example": "Change the background to black"
+                 },
++                "quality": {
++                    "type": "string",
++                    "example": "medium"
++                },
+                 "resolution": {
+                     "type": "string",
+                     "example": "1k"
+@@ -936,6 +1053,9 @@
+                 "image": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
++                "input_reference": {
++                    "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
++                },
+                 "last_frame": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
+@@ -963,6 +1083,14 @@
+                     "type": "string",
+                     "example": "720p"
+                 },
++                "seconds": {
++                    "type": "string",
++                    "example": "8"
++                },
++                "size": {
++                    "type": "string",
++                    "example": "1280x720"
++                },
+                 "video": {
+                     "$ref": "#/definitions/httpserver.SwaggerVideoMediaInput"
+                 },
+diff --git a/backend/docs/swagger.yaml b/backend/docs/swagger.yaml
+index ef2abe78..41bdaaec 100644
+--- a/backend/docs/swagger.yaml
++++ b/backend/docs/swagger.yaml
+@@ -32,6 +32,9 @@ definitions:
+       prompt:
+         example: Change the background to black
+         type: string
++      quality:
++        example: medium
++        type: string
+       resolution:
+         example: 1k
+         type: string
+@@ -151,6 +154,8 @@ definitions:
+         type: integer
+       image:
+         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
++      input_reference:
++        $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
+       last_frame:
+         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
+       model:
+@@ -170,6 +175,12 @@ definitions:
+       resolution:
+         example: 720p
+         type: string
++      seconds:
++        example: "8"
++        type: string
++      size:
++        example: 1280x720
++        type: string
+       video:
+         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
+       video_extension_start_time:
+@@ -259,6 +270,12 @@ paths:
+     post:
+       consumes:
+       - application/json
++      - multipart/form-data
++      description: 支持原 JSON image/images URL 对象（包括 data URL），或 multipart 的 image/image[]
++        文件。multipart 标量 n、stream、partial_images 等进入同一业务校验；selection_regions/multi_region_edits
++        使用 JSON 表单值。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。n 仅支持 1，quality
++        仅支持 low/medium。mask、background、input_fidelity、output_format、output_compression、user
++        不支持并明确报错。
+       parameters:
+       - description: 请求
+         in: body
+@@ -344,6 +361,7 @@ paths:
+       - Images
+   /v1/media/images/{asset_id}:
+     get:
++      description: 无需 API Key 或 Cookie，可直接下载。
+       parameters:
+       - description: Asset ID
+         in: path
+@@ -527,6 +545,42 @@ paths:
+       summary: 压缩 Response 上下文
+       tags:
+       - Responses
++  /v1/videos:
++    post:
++      consumes:
++      - application/json
++      - multipart/form-data
++      description: JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射
++        resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image
++        相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原
++        reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos
++        返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed
++        状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。
++      parameters:
++      - description: 请求
++        in: body
++        name: request
++        required: true
++        schema:
++          $ref: '#/definitions/httpserver.SwaggerVideoGenerationRequest'
++      produces:
++      - application/json
++      responses:
++        "200":
++          description: OK
++          schema:
++            additionalProperties: true
++            type: object
++        "400":
++          description: Bad Request
++          schema:
++            additionalProperties: true
++            type: object
++      security:
++      - BearerAuth: []
++      summary: 创建异步视频任务
++      tags:
++      - Videos
+   /v1/videos/{request_id}:
+     get:
+       parameters:
+@@ -553,6 +607,47 @@ paths:
+       summary: 查询异步视频任务
+       tags:
+       - Videos
++  /v1/videos/{request_id}/content:
++    get:
++      description: 无需 API Key 或 Cookie；本地视频支持 Range 分段读取。
++      parameters:
++      - description: Request ID
++        in: path
++        name: request_id
++        required: true
++        type: string
++      produces:
++      - video/mp4
++      responses:
++        "200":
++          description: OK
++          schema:
++            type: file
++        "206":
++          description: Partial Content
++          schema:
++            type: file
++        "404":
++          description: Not Found
++      summary: 直接下载已完成视频
++      tags:
++      - Videos
++    head:
++      description: 无需 API Key 或 Cookie，不返回文件正文。
++      parameters:
++      - description: Request ID
++        in: path
++        name: request_id
++        required: true
++        type: string
++      responses:
++        "200":
++          description: OK
++        "404":
++          description: Not Found
++      summary: 读取已完成视频的下载响应头
++      tags:
++      - Videos
+   /v1/videos/edits:
+     post:
+       consumes:
+@@ -617,6 +712,13 @@ paths:
+     post:
+       consumes:
+       - application/json
++      - multipart/form-data
++      description: JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射
++        resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image
++        相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原
++        reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos
++        返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed
++        状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。
+       parameters:
+       - description: 请求
+         in: body
+@@ -630,8 +732,7 @@ paths:
+         "200":
+           description: OK
+           schema:
+-            additionalProperties:
+-              type: string
++            additionalProperties: true
+             type: object
+         "400":
+           description: Bad Request
+diff --git a/backend/internal/app/application.go b/backend/internal/app/application.go
+index 906c912d..14bf20d7 100644
+--- a/backend/internal/app/application.go
++++ b/backend/internal/app/application.go
+@@ -138,6 +138,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
+ 		return nil, err
+ 	}
+ 	cfg = loadedConfig
++	if err := mediaJobRepo.ConfigureTerminalJournal(cfg.Media.Local.Path); err != nil {
++		database.Close()
++		return nil, err
++	}
+ 	localMediaStore, err := inframedia.NewLocalStore(cfg.Media.Local.Path)
+ 	if err != nil {
+ 		database.Close()
+diff --git a/backend/internal/app/startup.go b/backend/internal/app/startup.go
+index 45978f3d..7a05bf4c 100644
+--- a/backend/internal/app/startup.go
++++ b/backend/internal/app/startup.go
+@@ -116,6 +116,7 @@ func (s *startupState) acceptsTraffic() bool {
+ 	return s.phase == "running"
+ }
+ 
++// readinessSnapshot 以运行态、账本和真实路由候选判断就绪，避免管理端全量统计阻塞探针。
+ func readinessSnapshot(
+ 	ctx context.Context,
+ 	state *startupState,
+@@ -183,7 +184,7 @@ func readinessSnapshot(
+ 	now := time.Now().UTC()
+ 	for _, route := range routes {
+ 		required[route.Provider] = true
+-		if usable[route.Provider] || route.SupportedAccounts == 0 {
++		if usable[route.Provider] {
+ 			continue
+ 		}
+ 		candidates, listErr := accounts.ListRoutingCandidates(ctx, route.Provider, route.ID, route.UpstreamModel, providers.QuotaMode(route.Provider, route.UpstreamModel))
+diff --git a/backend/internal/application/account/service.go b/backend/internal/application/account/service.go
+index b527371d..737f9378 100644
+--- a/backend/internal/application/account/service.go
++++ b/backend/internal/application/account/service.go
+@@ -42,6 +42,8 @@ var (
+ 	ErrConversionBusy      = errors.New("账号正在转换为 Grok Build")
+ 	ErrConflict            = errors.New("账号操作存在冲突")
+ 	ErrAccountPoolMismatch = errors.New("批量操作包含不属于当前号池的账号")
++	ErrConsoleUnlinked     = provider.ErrConsoleUnlinked
++	ErrEgressBlocked       = provider.ErrEgressBlocked
+ )
+ 
+ var ErrCredentialRefreshPermanent = errors.New("OAuth refresh token 已永久失效")
+@@ -3136,11 +3138,13 @@ func (s *Service) ExhaustWebQuota(ctx context.Context, id uint64, mode string, r
+ 	return s.ExhaustQuota(ctx, id, mode, resetAt)
+ }
+ 
++// RefreshQuota 同步指定账号额度并记录失败原因，供正式管理入口定位上游故障。
+ func (s *Service) RefreshQuota(ctx context.Context, id uint64) ([]accountdomain.QuotaWindow, error) {
+ 	result, err, _ := s.quotaSyncs.Do("all:"+strconv.FormatUint(id, 10), func() (any, error) {
+ 		return s.refreshQuota(ctx, id)
+ 	})
+ 	if err != nil {
++		s.logger.Warn("account_quota_sync_failed", "account_id", id, "error", err)
+ 		return nil, err
+ 	}
+ 	refreshed, ok := result.(quotaRefreshResult)
+@@ -3633,6 +3637,7 @@ func (s *Service) RunQuotaRefresh(ctx context.Context) {
+ 	workers.Wait()
+ }
+ 
++// runQuotaRefresh 按共享代次同步额度；已删除、停用或待认证账号只清理待刷新状态，不重复调用上游。
+ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRequest) {
+ 	for {
+ 		s.quotaRefreshMu.Lock()
+@@ -3692,23 +3697,33 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
+ 		}
+ 		refreshMode := request.mode
+ 		consoleMode := isConsoleUsageQuotaMode(request.mode)
+-		skipUpstream := false
+-		if windows, err := s.accounts.GetQuotaWindows(ctx, []uint64{request.accountID}); err == nil {
+-			if consoleMode {
+-				for _, window := range windows[request.accountID] {
+-					if window.Mode == request.mode && window.SyncedAt != nil && s.now().UTC().Sub(window.SyncedAt.UTC()) < consoleQuotaRefreshMinInterval {
+-						skipUpstream = true
+-						break
++		credential, credentialErr := s.accounts.Get(ctx, request.accountID)
++		if credentialErr != nil && !errors.Is(credentialErr, repository.ErrNotFound) {
++			cancel()
++			s.logger.Warn("quota_refresh_account_read_failed", "account_id", request.accountID, "error", credentialErr)
++			s.deferQuotaRefresh(request.key)
++			return
++		}
++		inactive := errors.Is(credentialErr, repository.ErrNotFound) || !credential.Enabled || credential.AuthStatus != accountdomain.AuthStatusActive
++		skipUpstream := inactive
++		if !inactive {
++			if windows, err := s.accounts.GetQuotaWindows(ctx, []uint64{request.accountID}); err == nil {
++				if consoleMode {
++					for _, window := range windows[request.accountID] {
++						if window.Mode == request.mode && window.SyncedAt != nil && s.now().UTC().Sub(window.SyncedAt.UTC()) < consoleQuotaRefreshMinInterval {
++							skipUpstream = true
++							break
++						}
+ 					}
+-				}
+-			} else if request.mode != accountdomain.QuotaGroupWebImagine {
+-				// Weekly remains a Grok Web capability. Console never inherits this
+-				// legacy mode and always refreshes its authoritative /usage snapshot.
+-				// Imagine 配额组走 /rest/media/imagine/quota_info，不可被改刷 weekly。
+-				for _, window := range windows[request.accountID] {
+-					if window.Mode == "weekly" {
+-						refreshMode = "weekly"
+-						break
++				} else if request.mode != accountdomain.QuotaGroupWebImagine {
++					// Weekly remains a Grok Web capability. Console never inherits this
++					// legacy mode and always refreshes its authoritative /usage snapshot.
++					// Imagine 配额组走 /rest/media/imagine/quota_info，不可被改刷 weekly。
++					for _, window := range windows[request.accountID] {
++						if window.Mode == "weekly" {
++							refreshMode = "weekly"
++							break
++						}
+ 					}
+ 				}
+ 			}
+@@ -3800,7 +3815,7 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
+ 		s.quotaRefreshMu.Lock()
+ 		state = s.quotaRefreshes[request.key]
+ 		if state != nil && state.generation == localGeneration {
+-			if consoleMode {
++			if consoleMode && !inactive {
+ 				state.running = false
+ 				state.pending = false
+ 				state.failures = 0
+@@ -3809,7 +3824,11 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
+ 				delete(s.quotaRefreshes, request.key)
+ 			}
+ 			s.quotaRefreshMu.Unlock()
+-			perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: "success"}, 1)
++			outcome := "success"
++			if inactive {
++				outcome = "inactive"
++			}
++			perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: outcome}, 1)
+ 			return
+ 		}
+ 		if consoleMode && state != nil {
+diff --git a/backend/internal/application/gateway/video.go b/backend/internal/application/gateway/video.go
+index 9b50b170..4982d3a1 100644
+--- a/backend/internal/application/gateway/video.go
++++ b/backend/internal/application/gateway/video.go
+@@ -25,6 +25,7 @@ import (
+ 	"github.com/chenyme/grok2api/backend/internal/pkg/batch"
+ 	"github.com/chenyme/grok2api/backend/internal/pkg/mediafile"
+ 	"github.com/chenyme/grok2api/backend/internal/pkg/requestmeta"
++	"github.com/chenyme/grok2api/backend/internal/repository"
+ )
+ 
+ const (
+@@ -512,11 +513,31 @@ func (s *Service) VideoDurationSeconds(ctx context.Context, job media.Job) (int,
+ 	return mediafile.MP4DurationSeconds(reader, asset.SizeBytes)
+ }
+ 
++// OpenPublicVideoContent 按不可猜测的任务 ID 读取已完成视频，复用所属任务的内容读取逻辑。
++func (s *Service) OpenPublicVideoContent(ctx context.Context, id string) (io.ReadCloser, string, int64, error) {
++	if s.mediaJobs == nil {
++		return nil, "", 0, ErrResponseNotFound
++	}
++	jobs, err := s.mediaJobs.GetMediaJobsByIDs(ctx, []string{id})
++	if err != nil {
++		return nil, "", 0, err
++	}
++	if len(jobs) != 1 || jobs[0].Status != media.StatusCompleted {
++		return nil, "", 0, ErrResponseNotFound
++	}
++	return s.openVideoJobContent(ctx, jobs[0])
++}
++
+ func (s *Service) OpenVideoContent(ctx context.Context, id string, key clientkey.Key) (io.ReadCloser, string, int64, error) {
+ 	job, err := s.getVideoJob(ctx, id, key)
+ 	if err != nil {
+ 		return nil, "", 0, err
+ 	}
++	return s.openVideoJobContent(ctx, job)
++}
++
++// openVideoJobContent 优先读取本地成品，归档缺失时通过原账号读取原上游结果。
++func (s *Service) openVideoJobContent(ctx context.Context, job media.Job) (io.ReadCloser, string, int64, error) {
+ 	if job.Status != media.StatusCompleted {
+ 		return nil, "", 0, fmt.Errorf("视频内容尚未可用")
+ 	}
+@@ -711,6 +732,7 @@ func (s *Service) enqueueVideoJob(id string) bool {
+ 	}
+ }
+ 
++// processVideoJob 区分路由缺失与数据库故障，失败统一通过持久化终态收尾。
+ func (s *Service) processVideoJob(ctx context.Context, id string) {
+ 	job, claimed, err := s.claimVideoJob(ctx, id)
+ 	if err != nil {
+@@ -727,7 +749,12 @@ func (s *Service) processVideoJob(ctx context.Context, id string) {
+ 		route, err = s.models.GetByPublicID(ctx, job.Model)
+ 	}
+ 	if err != nil {
+-		s.failVideoJob(ctx, job, "model_not_found", errors.New("模型路由不存在"), 0, nil)
++		if errors.Is(err, repository.ErrNotFound) {
++			s.failVideoJob(ctx, job, "model_not_found", errors.New("模型路由不存在"), 0, nil)
++		} else {
++			s.logger.Warn("video_job_route_read_failed", "job_id", job.ID, "error", err)
++			s.failVideoJob(ctx, job, "database_unavailable", errors.New("数据库暂不可用，无法读取视频模型路由"), 0, nil)
++		}
+ 		return
+ 	}
+ 	s.runVideoJob(ctx, job, route)
+@@ -1340,6 +1367,7 @@ func waitVideoOutputRetry(ctx context.Context, attempt int) error {
+ 	}
+ }
+ 
++// reconcileVideoUsage 为补写的终态恢复审计、失败预占释放和输入回收。
+ func (s *Service) reconcileVideoUsage(ctx context.Context) error {
+ 	jobs, err := s.mediaJobs.ListUnrecordedTerminalMediaJobs(ctx, 200)
+ 	if err != nil {
+@@ -1347,13 +1375,21 @@ func (s *Service) reconcileVideoUsage(ctx context.Context) error {
+ 	}
+ 	var result error
+ 	for _, job := range jobs {
++		if job.Status == media.StatusFailed {
++			if err := s.clientKeys.CancelBilling(ctx, "video_usage_"+job.ID); err != nil {
++				result = firstError(result, fmt.Errorf("任务 %s 释放预占: %w", job.ID, err))
++				continue
++			}
++		}
+ 		durationMS := int64(0)
+ 		if job.CompletedAt != nil {
+ 			durationMS = max(int64(0), job.CompletedAt.Sub(job.CreatedAt).Milliseconds())
+ 		}
+ 		if err := s.recordVideoAudit(ctx, job, durationMS, 0, nil); err != nil {
+ 			result = firstError(result, fmt.Errorf("任务 %s: %w", job.ID, err))
++			continue
+ 		}
++		s.releaseVideoInputs(job)
+ 	}
+ 	return result
+ }
+diff --git a/backend/internal/infra/persistence/relational/account_links.go b/backend/internal/infra/persistence/relational/account_links.go
+index 2928dc7b..de80e1e2 100644
+--- a/backend/internal/infra/persistence/relational/account_links.go
++++ b/backend/internal/infra/persistence/relational/account_links.go
+@@ -114,6 +114,26 @@ func (r *AccountRepository) ReconcileProviderLinks(ctx context.Context, accountI
+ 	if accountID == 0 {
+ 		return repository.ErrNotFound
+ 	}
++	// 已完成的关系不再争抢全局写锁；真实关系变更仍在事务内重新检查并串行写入。
++	var linked struct {
++		Provider string
++		Console  bool
++		Build    bool
++		Web      bool
++	}
++	if err := r.db.db.WithContext(ctx).Model(&accountModel{}).
++		Select(`provider,
++			EXISTS (SELECT 1 FROM web_console_account_links WHERE web_account_id = provider_accounts.id) AS console,
++			EXISTS (SELECT 1 FROM account_provider_links WHERE web_account_id = provider_accounts.id) AS build,
++			(EXISTS (SELECT 1 FROM web_console_account_links WHERE console_account_id = provider_accounts.id)
++			 OR EXISTS (SELECT 1 FROM account_provider_links WHERE build_account_id = provider_accounts.id)) AS web`).
++		Where("id = ?", accountID).Take(&linked).Error; err != nil {
++		return mapError(err)
++	}
++	if (linked.Provider == string(account.ProviderWeb) && linked.Console && linked.Build) ||
++		(linked.Provider != string(account.ProviderWeb) && linked.Web) {
++		return nil
++	}
+ 	err := mapError(r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+ 		if err := lockAccountLinkMutation(tx); err != nil {
+ 			return err
+diff --git a/backend/internal/infra/persistence/relational/media_repository.go b/backend/internal/infra/persistence/relational/media_repository.go
+index 245c8766..d14f698a 100644
+--- a/backend/internal/infra/persistence/relational/media_repository.go
++++ b/backend/internal/infra/persistence/relational/media_repository.go
+@@ -3,6 +3,7 @@ package relational
+ import (
+ 	"context"
+ 	"strings"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/chenyme/grok2api/backend/internal/domain/media"
+@@ -10,7 +11,11 @@ import (
+ 	"gorm.io/gorm"
+ )
+ 
+-type MediaJobRepository struct{ db *Database }
++type MediaJobRepository struct {
++	db          *Database
++	terminalDir string
++	terminalMu  sync.Mutex
++}
+ 
+ type MediaAssetRepository struct{ db *Database }
+ 
+@@ -324,11 +329,20 @@ func (r *MediaJobRepository) GetMediaJobsByIDs(ctx context.Context, ids []string
+ 	return values, nil
+ }
+ 
++// UpdateMediaJob 在终态写库前保存持久化收据，数据库恢复后仅补写，不重新生成。
+ func (r *MediaJobRepository) UpdateMediaJob(ctx context.Context, value media.Job) error {
++	if r.terminalDir != "" && (value.Status == media.StatusCompleted || value.Status == media.StatusFailed) {
++		return r.writeTerminalMediaJob(ctx, value)
++	}
++	return r.updateMediaJob(ctx, value)
++}
++
++// updateMediaJob 保留认领令牌校验，避免失去租约的执行者覆盖新执行者。
++func (r *MediaJobRepository) updateMediaJob(ctx context.Context, value media.Job) error {
+ 	updates := mediaJobFromDomain(value)
+ 	query := r.db.db.WithContext(ctx).Model(&mediaJobModel{}).Where("id = ?", value.ID)
+ 	if value.ClaimToken != "" {
+-		query = query.Where("claim_token = ?", value.ClaimToken)
++		query = query.Where("claim_token = ? AND status IN ?", value.ClaimToken, []string{string(media.StatusQueued), string(media.StatusInProgress)})
+ 	}
+ 	// InputJSON and InputImageCount are immutable creation metadata. Progress and
+ 	// terminal updates must not resend a multi-megabyte Base64 payload.
+@@ -410,6 +424,9 @@ func (r *MediaJobRepository) SummarizeMediaJobs(ctx context.Context) (repository
+ 
+ // ListUnrecordedTerminalMediaJobs 返回尚未完成审计写入的成功或失败任务。
+ func (r *MediaJobRepository) ListUnrecordedTerminalMediaJobs(ctx context.Context, limit int) ([]media.Job, error) {
++	if err := r.flushTerminalMediaJobs(ctx); err != nil {
++		return nil, err
++	}
+ 	if limit <= 0 || limit > 1000 {
+ 		limit = 200
+ 	}
+@@ -447,6 +464,9 @@ func (r *MediaJobRepository) MarkMediaJobUsageRecorded(ctx context.Context, id s
+ }
+ 
+ func (r *MediaJobRepository) ListRecoverableMediaJobs(ctx context.Context, limit int) ([]media.Job, error) {
++	if err := r.flushTerminalMediaJobs(ctx); err != nil {
++		return nil, err
++	}
+ 	var rows []mediaJobModel
+ 	now := time.Now().UTC()
+ 	// Recovery only enqueues IDs. The bounded worker reads one complete payload
+diff --git a/backend/internal/infra/persistence/relational/model_repository.go b/backend/internal/infra/persistence/relational/model_repository.go
+index 8702102f..bb0bcd7d 100644
+--- a/backend/internal/infra/persistence/relational/model_repository.go
++++ b/backend/internal/infra/persistence/relational/model_repository.go
+@@ -519,25 +519,37 @@ func (r *ModelRepository) ListEnabledForScope(ctx context.Context, filter reposi
+ 	return values, nil
+ }
+ 
+-// ListConfiguredEnabled 返回所有已启用配置，包括暂时没有可用账号的路由，供 readiness 展示部分故障。
++// ListConfiguredEnabled 只读取启用配置；readiness 通过真实候选判断可用性，不聚合账号池。
+ func (r *ModelRepository) ListConfiguredEnabled(ctx context.Context) ([]model.Route, error) {
+ 	var rows []modelRouteModel
+ 	if err := r.db.db.WithContext(ctx).Where("enabled = ?", true).Order("public_id ASC, id ASC").Find(&rows).Error; err != nil {
+ 		return nil, err
+ 	}
+-	values := mapModelRows(rows)
+-	if err := r.annotateAvailability(ctx, values); err != nil {
+-		return nil, err
+-	}
+-	return values, nil
++	return mapModelRows(rows), nil
+ }
+ 
++// Get 读取执行所需路由和绑定，不在视频任务路径聚合整个账号池。
+ func (r *ModelRepository) Get(ctx context.Context, id uint64) (model.Route, error) {
+ 	var row modelRouteModel
+ 	if err := r.db.db.WithContext(ctx).First(&row, id).Error; err != nil {
+ 		return model.Route{}, mapError(err)
+ 	}
+-	values := []model.Route{toModelDomain(row)}
++	value := toModelDomain(row)
++	if err := r.db.db.WithContext(ctx).Model(&modelRouteAccountModel{}).
++		Where("model_route_id = ?", id).Order("account_id ASC").
++		Pluck("account_id", &value.BoundAccountIDs).Error; err != nil {
++		return model.Route{}, err
++	}
++	return value, nil
++}
++
++// getWithAvailability 仅为管理端写入响应补充账号统计。
++func (r *ModelRepository) getWithAvailability(ctx context.Context, id uint64) (model.Route, error) {
++	value, err := r.Get(ctx, id)
++	if err != nil {
++		return model.Route{}, err
++	}
++	values := []model.Route{value}
+ 	if err := r.annotateAvailability(ctx, values); err != nil {
+ 		return model.Route{}, err
+ 	}
+@@ -1136,7 +1148,7 @@ func (r *ModelRepository) Create(ctx context.Context, value model.Route, account
+ 	if len(accountIDs) > 0 {
+ 		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationModelBindingChanged, Provider: value.Provider, UpstreamModel: value.UpstreamModel})
+ 	}
+-	return r.Get(ctx, row.ID)
++	return r.getWithAvailability(ctx, row.ID)
+ }
+ 
+ func (r *ModelRepository) Update(ctx context.Context, value model.Route, accountIDs *[]uint64) (model.Route, error) {
+@@ -1192,7 +1204,7 @@ func (r *ModelRepository) Update(ctx context.Context, value model.Route, account
+ 	if accountIDs != nil {
+ 		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationModelBindingChanged, Provider: storedProvider, UpstreamModel: storedUpstreamModel})
+ 	}
+-	return r.Get(ctx, value.ID)
++	return r.getWithAvailability(ctx, value.ID)
+ }
+ 
+ func (r *ModelRepository) Delete(ctx context.Context, id uint64) error {
+diff --git a/backend/internal/infra/provider/console/quota.go b/backend/internal/infra/provider/console/quota.go
+index a8b407fc..8996ba0d 100644
+--- a/backend/internal/infra/provider/console/quota.go
++++ b/backend/internal/infra/provider/console/quota.go
+@@ -45,13 +45,7 @@ func (a *Adapter) SyncQuotaMode(ctx context.Context, credential account.Credenti
+ 	return account.QuotaWindow{}, fmt.Errorf("Console usage 响应缺少 %s 额度", consoleQuotaKind(mode))
+ }
+ 
+-// syncConsoleQuotas reads the weekly included-usage pool from the grok.com
+-// dashboard. The legacy DPoP /v1/usage endpoint reports limit 0 for every
+-// free account and says nothing about whether the account can be called.
+-//
+-// Chat, image and video all draw on the same cents budget, so the three
+-// Console modes mirror one snapshot; routing, recovery and display keep
+-// their per-mode shape while reading identical values.
++// syncConsoleQuotas 经账号所属 Console 出口读取 grok.com 周额度，三个媒体模式共享预算。
+ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Credential) ([]account.QuotaWindow, time.Time, error) {
+ 	ssoToken, err := a.cipher.Decrypt(credential.EncryptedAccessToken)
+ 	if err != nil {
+@@ -59,9 +53,8 @@ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Cred
+ 	}
+ 	requestCtx, cancel := context.WithTimeout(ctx, consoleQuotaTimeout)
+ 	defer cancel()
+-	// The dashboard is served by grok.com, so it shares the Web scope's exit,
+-	// browser fingerprint and Clearance, exactly like the Session identity sync.
+-	lease, err := a.egress.AcquireCredential(requestCtx, egressdomain.ScopeWeb, credential)
++	// 查询域名不改变账号的出口授权，绑定 Console 节点不能被当作 Web 节点使用。
++	lease, err := a.egress.AcquireCredential(requestCtx, egressdomain.ScopeConsole, credential)
+ 	if err != nil {
+ 		return nil, time.Time{}, err
+ 	}
+@@ -74,17 +67,17 @@ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Cred
+ 		if errors.Is(err, errCloudflareRejected) {
+ 			delay, opened := a.breaker.trip(lease.NodeID)
+ 			if opened {
+-				a.logger().Warn("console_quota_egress_blocked", "egress_node_id", lease.NodeID, "pause", delay, "error", err)
++				a.logger().Warn("console_quota_egress_blocked", "egress_node_id", lease.NodeID, "account_id", credential.ID, "pause", delay, "error", err)
+ 			}
+ 			return nil, time.Time{}, &egressBlockedError{retryAfter: delay}
+ 		}
+ 		if !errors.Is(err, provider.ErrUnauthorized) {
+-			a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeWeb, lease.NodeID, 0, err)
++			a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeConsole, lease.NodeID, 0, err)
+ 		}
+ 		return nil, time.Time{}, err
+ 	}
+ 	a.breaker.reset(lease.NodeID)
+-	a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeWeb, lease.NodeID, http.StatusOK, nil)
++	a.egress.FeedbackForScope(context.WithoutCancel(ctx), egressdomain.ScopeConsole, lease.NodeID, http.StatusOK, nil)
+ 	now := time.Now().UTC()
+ 	return consoleQuotaWindows(credential.ID, usage, now), now, nil
+ }
+diff --git a/backend/internal/infra/provider/console/workos.go b/backend/internal/infra/provider/console/workos.go
+index 8282fc8d..5ea5f342 100644
+--- a/backend/internal/infra/provider/console/workos.go
++++ b/backend/internal/infra/provider/console/workos.go
+@@ -175,9 +175,7 @@ func (a *Adapter) requestConsoleUsage(ctx context.Context, ssoToken string, sess
+ 	return response.StatusCode, data, nil
+ }
+ 
+-// loginWorkOS follows the dashboard login redirect chain by hand (the egress
+-// client never follows redirects) and collects the WorkOS cookie triple from
+-// the grok.com hops. Linked accounts finish without any interactive page.
++// loginWorkOS 沿可信跳转链收集 WorkOS Cookie，并将各域名的 Cloudflare 拦截归为出口故障。
+ func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infraegress.Lease) (workosSession, error) {
+ 	origin := a.sessionOrigin()
+ 	base, err := url.Parse(origin)
+@@ -237,15 +235,18 @@ func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infra
+ 			continue
+ 		}
+ 		if status == http.StatusForbidden {
++			if reason := cloudflareRejection(body); reason != "" {
++				if strings.EqualFold(target.Host, base.Host) {
++					lease.InvalidateClearance()
++				}
++				return workosSession{}, fmt.Errorf("%w: Console WorkOS 会话换取被 %s（host=%s）", errCloudflareRejected, reason, target.Hostname())
++			}
+ 			if strings.Contains(strings.ToLower(target.Host), "cursor") || strings.Contains(strings.ToLower(target.Host), "workos") {
+ 				return workosSession{}, a.classifyWorkOSSignIn(ctx, ssoToken, lease)
+ 			}
+ 			if !provider.IsDefinitiveAccountBlockBody(body) {
+ 				lease.InvalidateClearance()
+ 			}
+-			if reason := cloudflareRejection(body); reason != "" {
+-				return workosSession{}, fmt.Errorf("%w: Console WorkOS 会话换取被 %s", errCloudflareRejected, reason)
+-			}
+ 			return workosSession{}, fmt.Errorf("Console WorkOS 会话换取返回 403")
+ 		}
+ 		if status == http.StatusUnauthorized {
+@@ -262,16 +263,16 @@ func (a *Adapter) loginWorkOS(ctx context.Context, ssoToken string, lease *infra
+ 	return workosSession{}, fmt.Errorf("Console WorkOS 跳转次数超过 %d", workosMaxRedirects)
+ }
+ 
+-// classifyWorkOSSignIn decides whether landing on Cursor's hosted sign-in is
+-// definitive. cursorMerged=false (or absent) on grok.com's session means the
+-// account was never unified and has no Console credits; a merged account that
+-// still lands there is treated as a transient upstream fault.
++// classifyWorkOSSignIn 仅用明确的 cursorMerged=false 判定未关联，字段缺失不得触发账号失效或删除。
+ func (a *Adapter) classifyWorkOSSignIn(ctx context.Context, ssoToken string, lease *infraegress.Lease) error {
+ 	merged, known, err := a.fetchCursorMerged(ctx, ssoToken, lease)
+ 	if err != nil {
+ 		return fmt.Errorf("Console WorkOS 会话换取跳转到 Cursor 登录页，关联状态读取失败: %w", err)
+ 	}
+-	if known && merged {
++	if !known {
++		return fmt.Errorf("%w: Grok Session 未返回 cursorMerged，无法确认 Cursor 关联状态", errConsoleWorkOSMissing)
++	}
++	if merged {
+ 		return errors.New("Console WorkOS 会话换取跳转到 Cursor 登录页（cursorMerged=true，按瞬时故障处理）")
+ 	}
+ 	return errConsoleWorkOSUnlinked
+diff --git a/backend/internal/transport/http/account/handler.go b/backend/internal/transport/http/account/handler.go
+index 9de264f8..a87267c0 100644
+--- a/backend/internal/transport/http/account/handler.go
++++ b/backend/internal/transport/http/account/handler.go
+@@ -1503,6 +1503,17 @@ func (h *Handler) writeServiceError(c *gin.Context, code string, err error, fall
+ 		response.Error(c, http.StatusConflict, "accountConversionBusy", err.Error())
+ 	case errors.Is(err, accountapp.ErrWebAccountScriptBusy):
+ 		response.Error(c, http.StatusConflict, "webAccountScriptBusy", err.Error())
++	case errors.Is(err, accountapp.ErrConsoleUnlinked):
++		response.Error(c, http.StatusConflict, "consoleAccountUnlinked", "该 Console 账号尚未关联 Cursor，请先完成上游关联并核验额度")
++	case errors.Is(err, accountapp.ErrEgressBlocked):
++		var retry interface{ RetryAfterDuration() time.Duration }
++		if errors.As(err, &retry) {
++			seconds := (retry.RetryAfterDuration() + time.Second - 1) / time.Second
++			if seconds > 0 {
++				c.Header("Retry-After", strconv.FormatInt(int64(seconds), 10))
++			}
++		}
++		response.Error(c, http.StatusServiceUnavailable, "accountEgressBlocked", "当前出口被 Cloudflare 拦截，额度同步暂不可用")
+ 	default:
+ 		response.Error(c, fallbackStatus, code, fallbackMessage)
+ 	}
+diff --git a/backend/internal/transport/http/inference/handler.go b/backend/internal/transport/http/inference/handler.go
+index 6f34b94b..28d966c0 100644
+--- a/backend/internal/transport/http/inference/handler.go
++++ b/backend/internal/transport/http/inference/handler.go
+@@ -97,7 +97,6 @@ func (h *Handler) Register(router *gin.RouterGroup) {
+ 	router.POST("/videos/edits", h.editVideo)
+ 	router.POST("/videos/extensions", h.extendVideo)
+ 	router.GET("/videos/:requestId", h.getVideo)
+-	router.GET("/videos/:requestId/content", h.getVideoContent)
+ 	router.POST("/tts", h.synthesizeSpeech)
+ 	router.GET("/tts/voices", h.listTTSVoices)
+ 	router.GET("/tts/voices/:voiceId", h.getTTSVoice)
+@@ -1211,6 +1210,12 @@ func (h *Handler) writeVideoResponse(c *gin.Context, job mediadomain.Job) {
+ 	c.JSON(http.StatusOK, response)
+ }
+ 
++// RegisterPublic 注册仅公开成品字节的下载入口，任务元数据仍通过鉴权路由查询。
++func (h *Handler) RegisterPublic(router *gin.Engine) {
++	router.GET("/v1/videos/:requestId/content", h.getVideoContent)
++	router.HEAD("/v1/videos/:requestId/content", h.getVideoContent)
++}
++
+ func (h *Handler) publicURL(path string) string {
+ 	baseURL := h.publicAPIBaseURL
+ 	if h.publicBaseURL != nil {
+@@ -1226,11 +1231,7 @@ func (h *Handler) videoContentURL(jobID string) string {
+ 	return h.publicURL("/v1/videos/" + url.PathEscape(jobID) + "/content")
+ }
+ 
+-// videoPlaybackURL prefers the stored asset served by the public media route, so the
+-// returned link opens directly in browsers and players. /v1/videos/{id}/content needs
+-// the client API key, which makes the URL unusable outside an authenticated client.
+-// Images already return their public media URL; this keeps video consistent. Jobs
+-// without a stored asset keep the protected content endpoint.
++// videoPlaybackURL 优先返回公开本地资产地址，没有本地资产时返回公开任务内容地址。
+ func (h *Handler) videoPlaybackURL(job mediadomain.Job) string {
+ 	if assetID := strings.TrimSpace(job.ResultAssetID); assetID != "" {
+ 		return h.publicURL("/v1/media/videos/" + url.PathEscape(assetID))
+@@ -1238,12 +1239,9 @@ func (h *Handler) videoPlaybackURL(job mediadomain.Job) string {
+ 	return h.videoContentURL(job.ID)
+ }
+ 
++// getVideoContent 无需客户端凭据，仅返回已完成视频的字节。
+ func (h *Handler) getVideoContent(c *gin.Context) {
+-	clientKey, _, ok := requestIdentity(c)
+-	if !ok {
+-		return
+-	}
+-	body, contentType, size, err := h.gateway.OpenVideoContent(c.Request.Context(), strings.TrimSpace(c.Param("requestId")), clientKey)
++	body, contentType, size, err := h.gateway.OpenPublicVideoContent(c.Request.Context(), strings.TrimSpace(c.Param("requestId")))
+ 	if err != nil {
+ 		writeGatewayError(c, err)
+ 		return
+@@ -1252,6 +1250,7 @@ func (h *Handler) getVideoContent(c *gin.Context) {
+ 	writeVideoContent(c, body, contentType, size, strings.TrimSpace(c.Param("requestId")))
+ }
+ 
++// writeVideoContent 对本地成品支持 HEAD 和 Range，远程正文保留流式传输上限。
+ func writeVideoContent(c *gin.Context, body io.Reader, contentType string, size int64, downloadName string) {
+ 	if size > maxMediaResponseTransferBytes {
+ 		writeOpenAIError(c, http.StatusBadGateway, "media_too_large", "上游媒体超过 2 GiB 安全上限")
+@@ -1268,11 +1267,20 @@ func writeVideoContent(c *gin.Context, body io.Reader, contentType string, size
+ 	c.Header("X-Content-Type-Options", "nosniff")
+ 	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+ 	c.Header("Referrer-Policy", "no-referrer")
++	c.Header("Content-Type", contentType)
++	if seeker, ok := body.(io.ReadSeeker); ok {
++		http.ServeContent(c.Writer, c.Request, downloadName, time.Time{}, seeker)
++		return
++	}
+ 	if size >= 0 {
+ 		c.Header("Content-Length", strconv.FormatInt(size, 10))
+ 	} else {
+ 		c.Header("Trailer", mediaTransferErrorTrailer)
+ 	}
++	if c.Request.Method == http.MethodHead {
++		c.Status(http.StatusOK)
++		return
++	}
+ 	if err := writeMediaBody(c, body, contentType, http.StatusOK, maxMediaResponseTransferBytes); err != nil && size < 0 {
+ 		errorCode := "stream_interrupted"
+ 		if errors.Is(err, errResponseTransferLimit) {
+diff --git a/backend/internal/transport/http/server.go b/backend/internal/transport/http/server.go
+index e462642d..daaabde6 100644
+--- a/backend/internal/transport/http/server.go
++++ b/backend/internal/transport/http/server.go
+@@ -193,6 +193,7 @@ func New(deps Dependencies) *gin.Engine {
+ 		inferenceHandler.SetPublicAPIBaseURLResolver(deps.Settings.PublicAPIBaseURL)
+ 	}
+ 	inferenceHandler.Register(v1)
++	inferenceHandler.RegisterPublic(router)
+ 	registerFrontend(router, deps.FrontendStaticPath)
+ 	return router
+ }
+diff --git a/backend/internal/transport/http/swagger_annotations.go b/backend/internal/transport/http/swagger_annotations.go
+index 44d67993..7d9e62e5 100644
+--- a/backend/internal/transport/http/swagger_annotations.go
++++ b/backend/internal/transport/http/swagger_annotations.go
+@@ -242,6 +242,7 @@ func swaggerDetectImageLayers() {}
+ 
+ // swaggerGetImage godoc
+ // @Summary 获取归档图片
++// @Description 无需 API Key 或 Cookie，可直接下载。
+ // @Tags Images
+ // @Produce image/png
+ // @Param asset_id path string true "Asset ID"
+@@ -298,3 +299,25 @@ func swaggerExtendVideo() {}
+ // @Failure 404 {object} map[string]any
+ // @Router /v1/videos/{request_id} [get]
+ func swaggerGetVideo() {}
++
++// swaggerGetVideoContent godoc
++// @Summary 直接下载已完成视频
++// @Description 无需 API Key 或 Cookie；本地视频支持 Range 分段读取。
++// @Tags Videos
++// @Produce video/mp4
++// @Param request_id path string true "Request ID"
++// @Success 200 {file} binary
++// @Success 206 {file} binary
++// @Failure 404
++// @Router /v1/videos/{request_id}/content [get]
++func swaggerGetVideoContent() {}
++
++// swaggerHeadVideoContent godoc
++// @Summary 读取已完成视频的下载响应头
++// @Description 无需 API Key 或 Cookie，不返回文件正文。
++// @Tags Videos
++// @Param request_id path string true "Request ID"
++// @Success 200
++// @Failure 404
++// @Router /v1/videos/{request_id}/content [head]
++func swaggerHeadVideoContent() {}

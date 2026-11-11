@@ -1,0 +1,76 @@
+[
+  {
+    "account": 29174,
+    "mode": "fresh_timestamp_old_formula",
+    "path": "/rest/media/imagine/quota_info",
+    "http": 200,
+    "seconds": 2.58,
+    "response": {
+      "image": null,
+      "imagePro": {
+        "available": false,
+        "remainingQueries": 0,
+        "windowSizeSeconds": 86400
+      },
+      "imageEdit": null,
+      "video": null,
+      "video720p": {
+        "available": false,
+        "remainingQueries": 0,
+        "windowSizeSeconds": 86400
+      },
+      "maxVideoDurationSeconds": 15
+    }
+  },
+  {
+    "account": 29174,
+    "mode": "fresh_timestamp_old_formula",
+    "path": "/rest/app-chat/conversations/new",
+    "http": 429,
+    "seconds": 0.35,
+    "response": {
+      "error": {
+        "code": 8,
+        "message": "Too many requests",
+        "details": []
+      }
+    }
+  },
+  {
+    "account": 29174,
+    "mode": "unsigned",
+    "path": "/rest/media/imagine/quota_info",
+    "http": 200,
+    "seconds": 0.37,
+    "response": {
+      "image": null,
+      "imagePro": {
+        "available": false,
+        "remainingQueries": 0,
+        "windowSizeSeconds": 86400
+      },
+      "imageEdit": null,
+      "video": null,
+      "video720p": {
+        "available": false,
+        "remainingQueries": 0,
+        "windowSizeSeconds": 86400
+      },
+      "maxVideoDurationSeconds": 15
+    }
+  },
+  {
+    "account": 29174,
+    "mode": "unsigned",
+    "path": "/rest/app-chat/conversations/new",
+    "http": 429,
+    "seconds": 0.39,
+    "response": {
+      "error": {
+        "code": 8,
+        "message": "Too many requests",
+        "details": []
+      }
+    }
+  }
+]

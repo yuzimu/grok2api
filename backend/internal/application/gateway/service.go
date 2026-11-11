@@ -1169,6 +1169,9 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	responseStartedAt := startedAt
 	transientRetry := 0
 	forwardResponse := func(lease *accountLease, credential accountdomain.Credential, billing *accountdomain.Billing) (*provider.Response, error) {
+		if credential.Provider == accountdomain.ProviderBuild {
+			s.accounts.QueueQuotaRefresh(credential.ID, "billing")
+		}
 		started := time.Now()
 		responseStartedAt = started
 		lease.markSelectorUpstreamStarted()
@@ -1262,6 +1265,9 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 					if err != nil {
 						s.logger.Error("response_ownership_save_failed", "response_id", responseID, "client_key_id", input.ClientKey.ID, "account_id", accountID, "provider", route.Provider, "error", err)
 					}
+				}
+				if successful && credential.Provider == accountdomain.ProviderBuild {
+					s.accounts.QueueQuotaRefresh(accountID, "billing")
 				}
 				if successful && lease.QuotaMode != "" {
 					if lease.QuotaMode != "weekly" {
@@ -1657,18 +1663,8 @@ attemptLoop:
 				// period is not a reliable reset promise. Probe again after 24 hours.
 				s.selector.MarkFreeQuotaExhausted(ctx, credential, used, limit)
 				failureHandled = true
-			} else if lastFailure.ModelQuotaExhausted {
-				s.selector.MarkModelQuotaExhausted(ctx, credential, lease.Billing, route.UpstreamModel, retryAfter)
-				failureHandled = true
-			} else if lastFailure.FreeQuotaExhausted {
-				s.selector.MarkFreeQuotaExhausted(ctx, credential, 0, 0)
-				failureHandled = true
-			} else if lastFailure.SpendingLimitBlocked || lastFailure.QuotaExhausted {
-				err := s.selector.MarkPaymentQuotaExhausted(ctx, credential, quotaRecoveryHints{Billing: lease.Billing})
-				failureHandled = err == nil
-				if err != nil {
-					s.logger.Error("account_quota_recovery_write_failed", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider, "error", err)
-				}
+			} else {
+				failureHandled = s.applyAccountQuotaFailure(ctx, credential, lease.Billing, route.UpstreamModel, lastFailure, retryAfter)
 			}
 			if lastFailure.AccountBlocked {
 				failureHandled = s.markReauthRequired(ctx, input.RequestID, credential, fmt.Sprintf("%s account is blocked", credential.Provider))
@@ -2296,6 +2292,9 @@ func isRetryableResponse(response *provider.Response, upstreamProvider accountdo
 	if response.StatusCode == http.StatusBadRequest && isReasoningRecoveryFailedResponse(response, upstreamProvider) {
 		return true
 	}
+	if responseHasIncorrectAPIKey(response) {
+		return true
+	}
 	if !isRetryable(response.StatusCode) {
 		return false
 	}
@@ -2305,6 +2304,26 @@ func isRetryableResponse(response *provider.Response, upstreamProvider accountdo
 		return true
 	}
 	return !strings.EqualFold(strings.TrimSpace(response.Header.Get("X-Should-Retry")), "false")
+}
+
+// responseHasIncorrectAPIKey 读取400的Key拒绝信息并恢复响应体，供后续分类和审计复用。
+func responseHasIncorrectAPIKey(response *provider.Response) bool {
+	if response == nil || response.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	if response.Diagnostic != nil && isIncorrectAPIKeyText(string(response.Diagnostic.Body)) {
+		return true
+	}
+	if response.Body == nil {
+		return false
+	}
+	data, _, err := provider.ReadDiagnosticBody(response.Body)
+	_ = response.Body.Close()
+	response.Body = io.NopCloser(bytes.NewReader(data))
+	if err != nil {
+		return false
+	}
+	return isIncorrectAPIKeyText(string(data))
 }
 
 // isTerminalRequestForbidden identifies request-level 403 responses that must
@@ -2329,6 +2348,27 @@ func isTerminalRequestForbidden(upstreamProvider accountdomain.Provider, failure
 func forcesAccountFailover(status int, upstreamProvider accountdomain.Provider) bool {
 	return upstreamProvider == accountdomain.ProviderBuild &&
 		(status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests)
+}
+
+// applyAccountQuotaFailure 为聊天和视频统一记录额度阻断及恢复时间，并使选号缓存失效。
+func (s *Service) applyAccountQuotaFailure(ctx context.Context, credential accountdomain.Credential, billing *accountdomain.Billing, upstreamModel string, failure *UpstreamFailure, retryAfter time.Duration) bool {
+	switch {
+	case failure.ModelQuotaExhausted:
+		s.selector.MarkModelQuotaExhausted(ctx, credential, billing, upstreamModel, retryAfter)
+	case failure.FreeQuotaExhausted:
+		s.selector.MarkFreeQuotaExhausted(ctx, credential, 0, 0)
+	case failure.SpendingLimitBlocked || failure.QuotaExhausted:
+		if err := s.selector.MarkPaymentQuotaExhausted(ctx, credential, quotaRecoveryHints{Billing: billing}); err != nil {
+			s.logger.Error("account_quota_recovery_write_failed", "account_id", credential.ID, "provider", credential.Provider, "error", err)
+			return false
+		}
+	default:
+		return false
+	}
+	if credential.Provider == accountdomain.ProviderBuild {
+		s.accounts.QueueQuotaRefresh(credential.ID, "billing")
+	}
+	return true
 }
 
 func (s *Service) applyRateLimitReconciliation(ctx context.Context, credential accountdomain.Credential, status int, retryAfter time.Duration, state accountapp.RateLimitReconcileState, reconcileErr error) {

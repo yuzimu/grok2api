@@ -496,6 +496,9 @@ func parseVideoCreateResponse(body []byte) (string, error) {
 	if err := json.Unmarshal(body, &root); err != nil {
 		return "", fmt.Errorf("解析 Build 视频创建响应: %w", err)
 	}
+	if err := buildVideoPolicyError(root); err != nil {
+		return "", err
+	}
 	if message := firstNestedString(root, "error", "message"); message != "" {
 		return "", fmt.Errorf("Build 视频创建失败: %s", safeVideoDiagnosticMessage(message))
 	}
@@ -515,12 +518,18 @@ func parseVideoStatusResponse(body []byte, progress func(int), allowMissingURL b
 	if err := json.Unmarshal(body, &root); err != nil {
 		return provider.VideoResult{}, false, fmt.Errorf("解析 Build 视频状态响应: %w", err)
 	}
+	if err := buildVideoPolicyError(root); err != nil {
+		return provider.VideoResult{}, false, err
+	}
 	if message := firstNestedString(root, "error", "message"); message != "" {
 		return provider.VideoResult{}, false, fmt.Errorf("Build 视频生成失败: %s", safeVideoDiagnosticMessage(message))
 	}
 	statusSource := root
 	if data, ok := root["data"].(map[string]any); ok {
 		statusSource = data
+	}
+	if err := buildVideoPolicyError(statusSource); err != nil {
+		return provider.VideoResult{}, false, err
 	}
 	if value, ok := numberAsInt(firstValue(statusSource, "progress")); ok && progress != nil {
 		progress(value)
@@ -548,6 +557,17 @@ func parseVideoStatusResponse(body []byte, progress func(int), allowMissingURL b
 		}
 		return provider.VideoResult{}, false, nil
 	}
+}
+
+// buildVideoPolicyError 保留明确审核码，避免仅有 code 的响应被降级为普通失败。
+func buildVideoPolicyError(source map[string]any) error {
+	for _, value := range []string{firstNestedString(source, "error", "code"), firstNestedString(source, "error", "message"),
+		firstString(source, "error"), firstString(source, "error_code"), firstString(source, "error_message"), firstString(source, "message")} {
+		if provider.IsContentPolicyRejection(value) {
+			return fmt.Errorf("%s: %s", provider.ContentPolicyCode, provider.ContentPolicyMessage)
+		}
+	}
+	return nil
 }
 
 func asVideoUpstreamError(err error, target **videoUpstreamError) bool {

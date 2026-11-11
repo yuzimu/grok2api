@@ -77,6 +77,8 @@ const (
 	// It is not account-failover eligible because retrying deterministic local
 	// validation or configuration failures against another credential is useless.
 	VideoStagePrepare VideoStage = "prepare"
+	// VideoStageUpload 表示参考素材上传失败，视频创建请求尚未发送。
+	VideoStageUpload VideoStage = "upload"
 	// VideoStageCreate means the upstream explicitly rejected the create request.
 	// Account failover is safe only for the retryable 4xx statuses selected by
 	// the gateway; 5xx responses remain indeterminate because work may already

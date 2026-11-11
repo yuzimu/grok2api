@@ -1,0 +1,55 @@
+{
+  "accounts": 578,
+  "results": 1156,
+  "requests": 1132,
+  "duplicate_requests": 0,
+  "start": "2026-11-01T04:49:28.421796+00:00",
+  "end": "2026-11-01T04:59:59.380076+00:00",
+  "stt": {
+    "success": 566,
+    "success_rate_percent": 97.92,
+    "submitted": 566,
+    "outcomes": {
+      "success": 566,
+      "auth_exception": 9,
+      "key_setup_unavailable": 3
+    },
+    "http": {
+      "200": 566,
+      "not_submitted": 12
+    }
+  },
+  "tts": {
+    "success": 566,
+    "success_rate_percent": 97.92,
+    "submitted": 566,
+    "outcomes": {
+      "success": 566,
+      "auth_exception": 9,
+      "key_setup_unavailable": 3
+    },
+    "http": {
+      "200": 566,
+      "not_submitted": 12
+    }
+  },
+  "both_success": 566,
+  "image_402_accounts": 474,
+  "image_402_both_audio_success": 474,
+  "proxy_failed_ids": [
+    86109,
+    86526,
+    86593,
+    86604,
+    86633,
+    86728,
+    86785,
+    86791,
+    86807
+  ],
+  "key_unavailable_ids": [
+    87039,
+    87041,
+    87042
+  ]
+}

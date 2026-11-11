@@ -673,6 +673,7 @@ func (a *Adapter) fetchMediaPostVideo(ctx context.Context, cfg Config, lease *eg
 	return provider.VideoResult{}, false, nil
 }
 
+// prepareVideoReference 区分素材上传失败与视频提交失败，返回已上传的参考图 URI。
 func (a *Adapter) prepareVideoReference(ctx context.Context, cfg Config, lease *egress.Lease, token, value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -684,7 +685,7 @@ func (a *Adapter) prepareVideoReference(ctx context.Context, cfg Config, lease *
 	}
 	uploaded, err := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "video_reference_upload")
 	if err != nil {
-		return "", err
+		return "", provider.WrapVideoStage(provider.VideoStageUpload, 0, err)
 	}
 	if uploaded.URI == "" {
 		return "", fmt.Errorf("上传视频参考图片后未返回 fileUri")
@@ -692,6 +693,7 @@ func (a *Adapter) prepareVideoReference(ctx context.Context, cfg Config, lease *
 	return uploaded.URI, nil
 }
 
+// prepareVideoAsset 保留参考图上传阶段，避免将上传错误误判为已提交视频。
 func (a *Adapter) prepareVideoAsset(ctx context.Context, cfg Config, lease *egress.Lease, token, value string) (uploadedFile, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -703,7 +705,7 @@ func (a *Adapter) prepareVideoAsset(ctx context.Context, cfg Config, lease *egre
 	}
 	uploaded, err := a.uploadFileV2Direct(ctx, cfg, lease, token, image, cfg.BaseURL+"/imagine", imagineSelfUploadSource, "video_reference_upload")
 	if err != nil {
-		return uploadedFile{}, err
+		return uploadedFile{}, provider.WrapVideoStage(provider.VideoStageUpload, 0, err)
 	}
 	if uploaded.URI == "" {
 		return uploadedFile{}, fmt.Errorf("上传视频参考图片后未返回 fileUri")

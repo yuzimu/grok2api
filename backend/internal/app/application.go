@@ -138,6 +138,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		return nil, err
 	}
 	cfg = loadedConfig
+	if err := mediaJobRepo.ConfigureTerminalJournal(cfg.Media.Local.Path); err != nil {
+		database.Close()
+		return nil, err
+	}
 	localMediaStore, err := inframedia.NewLocalStore(cfg.Media.Local.Path)
 	if err != nil {
 		database.Close()
@@ -217,6 +221,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	cliAdapter.SetLogger(logger)
 	cliAdapter.SetEgress(egressManager)
 	cliAdapter.SetVideoUploadIssuer(mediaService)
+	cliAdapter.SetImageAssetStore(mediaService)
 	reasoningReplay := reasoningreplay.New(reasoningReplayStore, reasoningreplay.Config{
 		Enabled: cfg.Routing.ReasoningReplayEnabled,
 		TTL:     cfg.Routing.ReasoningReplayTTL.Value(),

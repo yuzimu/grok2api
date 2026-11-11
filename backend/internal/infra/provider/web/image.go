@@ -1777,70 +1777,48 @@ func (a *Adapter) postJSONWithReferer(ctx context.Context, cfg Config, lease *eg
 	return a.postJSONWithRefererTimed(ctx, cfg, lease, token, endpoint, payload, timeout, referer, nil)
 }
 
-// postJSONWithRefererTimed 从实际发送开始计时，签名刷新后的重发使用本次调用的独立起点。
+// postJSONWithRefererTimed 按当前媒体协议发送请求，不附加旧签名或重放被拒绝的生成请求。
 func (a *Adapter) postJSONWithRefererTimed(ctx context.Context, cfg Config, lease *egress.Lease, token, endpoint string, payload any, timeout time.Duration, referer string, startedAt *time.Time) (*http.Response, error) {
 	data, _ := json.Marshal(payload)
-	for attempt := 0; attempt < 2; attempt++ {
-		requestCtx, cancel := context.WithTimeout(ctx, timeout)
-		request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(data))
-		if err != nil {
-			cancel()
-			return nil, err
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	request.Header = buildHeaders(token, lease, "application/json")
+	applyAppHeaders(request.Header, cfg.BaseURL, referer)
+	// tls-client 仅自动解压 gzip，不能声明 br 或 zstd。
+	request.Header.Set("Accept-Encoding", "gzip")
+	if startedAt != nil {
+		*startedAt = time.Now()
+	}
+	response, err := lease.DoDeferredForbidden(request)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	if response.StatusCode == http.StatusForbidden {
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, webMediaDiagnosticBodyLimit+1))
+		_ = response.Body.Close()
+		cancel()
+		if readErr != nil {
+			return nil, fmt.Errorf("读取 Grok Web 403 响应: %w", readErr)
 		}
-		request.Header = buildHeaders(token, lease, "application/json")
-		applyAppHeaders(request.Header, cfg.BaseURL, referer)
-		// tls-client only auto-decompresses gzip. Advertising br/zstd lets
-		// upstream return a compressed body that json.Unmarshal cannot parse.
-		request.Header.Set("Accept-Encoding", "gzip")
-		a.applySignedStatsig(requestCtx, request, token, lease)
-		if startedAt != nil {
-			*startedAt = time.Now()
+		truncated := len(body) > webMediaDiagnosticBodyLimit
+		if truncated {
+			body = body[:webMediaDiagnosticBodyLimit]
 		}
-		response, err := lease.DoDeferredForbidden(request)
-		if err != nil {
-			cancel()
-			return nil, err
+		upstreamErr := newWebMediaUpstreamError(response.StatusCode, body, truncated)
+		response.Body = io.NopCloser(bytes.NewReader(body))
+		response.ContentLength = int64(len(body))
+		if isClearanceRefreshableMediaError(upstreamErr) {
+			lease.InvalidateClearance()
 		}
-		if response.StatusCode == http.StatusForbidden {
-			body, readErr := io.ReadAll(io.LimitReader(response.Body, webMediaDiagnosticBodyLimit+1))
-			_ = response.Body.Close()
-			cancel()
-			if readErr != nil {
-				return nil, fmt.Errorf("读取 Grok Web 403 响应: %w", readErr)
-			}
-			truncated := len(body) > webMediaDiagnosticBodyLimit
-			if truncated {
-				body = body[:webMediaDiagnosticBodyLimit]
-			}
-			upstreamErr := newWebMediaUpstreamError(response.StatusCode, body, truncated)
-			response.Body = io.NopCloser(bytes.NewReader(body))
-			response.ContentLength = int64(len(body))
-			if isClearanceRefreshableMediaError(upstreamErr) {
-				lease.InvalidateClearance()
-				_ = a.invalidateSignedStatsig(http.MethodPost, endpoint)
-				return response, nil
-			}
-			// Code 7 is the application-layer equivalent of reloading the Grok
-			// page: refresh only the path-bound Statsig signature and replay the
-			// explicitly rejected POST once. It is not a Cloudflare challenge, so
-			// the current Clearance lease remains valid.
-			if isStatsigRefreshableMediaError(upstreamErr, body) {
-				if attempt == 0 && a.invalidateSignedStatsig(http.MethodPost, endpoint) {
-					continue
-				}
-				return response, nil
-			}
-			// Remaining structured JSON responses are application policy decisions.
-			// They must not invalidate Clearance, affect egress health, or be replayed.
-			if upstreamErr.bodyKind == "json" || attempt > 0 || !a.invalidateSignedStatsig(http.MethodPost, endpoint) {
-				return response, nil
-			}
-			continue
-		}
-		response.Body = &cancelBody{ReadCloser: response.Body, cancel: cancel}
 		return response, nil
 	}
-	return nil, fmt.Errorf("Grok Web Statsig 刷新失败")
+	response.Body = &cancelBody{ReadCloser: response.Body, cancel: cancel}
+	return response, nil
 }
 
 // segmentImage 使用上游 asset ID 获取对象检测框和 RLE 掩码。

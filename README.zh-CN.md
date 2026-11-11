@@ -332,7 +332,7 @@ stored response 和 compact 取决于最终 Provider。登录管理端后可在 
 
 媒体 multipart 总请求上限 32 MiB、最多 64 段、每文件最多 20 MiB，同时遵守服务端更低的请求体上限。JPEG、PNG、静态 WebP、GIF 文件须声明匹配的 MIME 或 `application/octet-stream`，在任务创建及上游上传前先校验尺寸预算，再完整解码。单边最多 8192，解码像素最多 16,777,216；GIF 最多 128 帧且累计像素遵守同一预算。WebP 使用官方 `golang.org/x/image/webp` decoder，动画 WebP 和损坏图片被拒绝；原有 JSON data URL 路径不变。不按文件名识别图片。非法数值、重复标量和不支持的 multipart 选项明确报错。
 
-`POST /v1/videos` 返回包含 `id`、`object: "video"`、`model`、`status` 的 OpenAI 风格视频对象。原有 `/v1/videos/generations`、`/edits`、`/extensions` 创建入口保持 `{"request_id":"..."}` 契约。共用的 `GET /v1/videos/{id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`，附带任务真实时间戳、进度、已知时长的 `seconds` 字符串，以及保存的比例和分辨率能精确表示时的像素 `size`。完成任务保留 `video.url` 并提供 `content_url`，鉴权视频内容入口为 `/v1/videos/{id}/content`。媒体能力仅限上述明确支持的选项，不是完整的 OpenAI 媒体兼容；未提供视频 list、delete 或 cancel 接口。
+`POST /v1/videos` 返回包含 `id`、`object: "video"`、`model`、`status` 的 OpenAI 风格视频对象。原有 `/v1/videos/generations`、`/edits`、`/extensions` 创建入口保持 `{"request_id":"..."}` 契约。共用的 `GET /v1/videos/{id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`，附带任务真实时间戳、进度、已知时长的 `seconds` 字符串，以及保存的比例和分辨率能精确表示时的像素 `size`。完成任务保留 `video.url` 并提供 `content_url`。返回的图片和视频链接，包括 `/v1/media/images/{asset_id}`、`/v1/media/videos/{asset_id}` 和 `/v1/videos/{id}/content`，均支持无需 API Key 或 Cookie 的 GET/HEAD 直接下载，本地视频支持 Range 分段读取。生成、任务元数据查询和管理接口仍需鉴权。媒体能力仅限上述明确支持的选项，不是完整的 OpenAI 媒体兼容；未提供视频 list、delete 或 cancel 接口。
 
 `/v1/audio/transcriptions` 支持 `json`（默认）、`verbose_json` 和 `text`。视频编辑按实际路由校验 Console `grok-imagine-video`。视频延长还支持 Web `grok-imagine-video-1.5`：请求需用 `video_extension_start_time` 提供源视频的绝对结束时间，网关会先把源视频上传到选中的 Web 账号，再新建延长会话；Web 的 `duration` 表示本次新增片段时长，范围 6 到 10 秒。对外模型名仍可自定义。金额计费以网关能够可靠测量的官方计价单位为准：TTS 按输入字符数预留并结算，REST 与流式 STT 按成功响应返回的实际音频时长结算。STT 时长只能在请求完成后获得，因此并发中的请求可能使有限额 Key 短暂超过金额上限。Realtime、视频编辑与延长，以及未收录官方定价的自定义路由当前记录为“未计费”，保持可调用且不消耗金额额度。
 
@@ -358,6 +358,7 @@ curl http://127.0.0.1:7878/v1/responses \
 - 订阅和文本/Base64 导入
 - 批量探测、筛选、删除、分配与均衡
 - 按作用域配置无回退、直连或固定节点
+- Console 鉴权、图片/视频生成和素材下载必须配置代理，不使用 x.ai 域名的默认直连规则。
 - 代理池模式，单次连接失败不会触发全局冷却
 - 固定代理传输失败后立即复测；同节点复测自动合并，后续绑定请求限时等待并在恢复后快速重试
 - 可选的[出口质量守护程序](./tools/egress-quality-guard/README.zh-CN.md)，支持逐节点模型探测、防误杀隔离和自动恢复；通过内置的 `quality-guard` Compose profile 按需启用

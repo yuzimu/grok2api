@@ -97,7 +97,6 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.POST("/videos/edits", h.editVideo)
 	router.POST("/videos/extensions", h.extendVideo)
 	router.GET("/videos/:requestId", h.getVideo)
-	router.GET("/videos/:requestId/content", h.getVideoContent)
 	router.POST("/tts", h.synthesizeSpeech)
 	router.GET("/tts/voices", h.listTTSVoices)
 	router.GET("/tts/voices/:voiceId", h.getTTSVoice)
@@ -1211,6 +1210,12 @@ func (h *Handler) writeVideoResponse(c *gin.Context, job mediadomain.Job) {
 	c.JSON(http.StatusOK, response)
 }
 
+// RegisterPublic 注册仅公开成品字节的下载入口，任务元数据仍通过鉴权路由查询。
+func (h *Handler) RegisterPublic(router *gin.Engine) {
+	router.GET("/v1/videos/:requestId/content", h.getVideoContent)
+	router.HEAD("/v1/videos/:requestId/content", h.getVideoContent)
+}
+
 func (h *Handler) publicURL(path string) string {
 	baseURL := h.publicAPIBaseURL
 	if h.publicBaseURL != nil {
@@ -1226,11 +1231,7 @@ func (h *Handler) videoContentURL(jobID string) string {
 	return h.publicURL("/v1/videos/" + url.PathEscape(jobID) + "/content")
 }
 
-// videoPlaybackURL prefers the stored asset served by the public media route, so the
-// returned link opens directly in browsers and players. /v1/videos/{id}/content needs
-// the client API key, which makes the URL unusable outside an authenticated client.
-// Images already return their public media URL; this keeps video consistent. Jobs
-// without a stored asset keep the protected content endpoint.
+// videoPlaybackURL 优先返回公开本地资产地址，没有本地资产时返回公开任务内容地址。
 func (h *Handler) videoPlaybackURL(job mediadomain.Job) string {
 	if assetID := strings.TrimSpace(job.ResultAssetID); assetID != "" {
 		return h.publicURL("/v1/media/videos/" + url.PathEscape(assetID))
@@ -1238,12 +1239,9 @@ func (h *Handler) videoPlaybackURL(job mediadomain.Job) string {
 	return h.videoContentURL(job.ID)
 }
 
+// getVideoContent 无需客户端凭据，仅返回已完成视频的字节。
 func (h *Handler) getVideoContent(c *gin.Context) {
-	clientKey, _, ok := requestIdentity(c)
-	if !ok {
-		return
-	}
-	body, contentType, size, err := h.gateway.OpenVideoContent(c.Request.Context(), strings.TrimSpace(c.Param("requestId")), clientKey)
+	body, contentType, size, err := h.gateway.OpenPublicVideoContent(c.Request.Context(), strings.TrimSpace(c.Param("requestId")))
 	if err != nil {
 		writeGatewayError(c, err)
 		return
@@ -1252,6 +1250,7 @@ func (h *Handler) getVideoContent(c *gin.Context) {
 	writeVideoContent(c, body, contentType, size, strings.TrimSpace(c.Param("requestId")))
 }
 
+// writeVideoContent 对本地成品支持 HEAD 和 Range，远程正文保留流式传输上限。
 func writeVideoContent(c *gin.Context, body io.Reader, contentType string, size int64, downloadName string) {
 	if size > maxMediaResponseTransferBytes {
 		writeOpenAIError(c, http.StatusBadGateway, "media_too_large", "上游媒体超过 2 GiB 安全上限")
@@ -1268,10 +1267,19 @@ func writeVideoContent(c *gin.Context, body io.Reader, contentType string, size 
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
 	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("Content-Type", contentType)
+	if seeker, ok := body.(io.ReadSeeker); ok {
+		http.ServeContent(c.Writer, c.Request, downloadName, time.Time{}, seeker)
+		return
+	}
 	if size >= 0 {
 		c.Header("Content-Length", strconv.FormatInt(size, 10))
 	} else {
 		c.Header("Trailer", mediaTransferErrorTrailer)
+	}
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
 	}
 	if err := writeMediaBody(c, body, contentType, http.StatusOK, maxMediaResponseTransferBytes); err != nil && size < 0 {
 		errorCode := "stream_interrupted"
@@ -1437,13 +1445,19 @@ func videoGenerationResponse(job mediadomain.Job, contentURLs ...string) gin.H {
 		response["video"] = video
 		response["content_url"] = videoURL
 	case mediadomain.StatusFailed:
-		response["error"] = gin.H{"code": officialVideoErrorCode(job.ErrorCode), "message": job.ErrorMessage}
+		code, message := job.ErrorCode, job.ErrorMessage
+		if provider.IsContentPolicyRejection(code) || provider.IsContentPolicyRejection(message) {
+			code, message = provider.ContentPolicyCode, provider.ContentPolicyMessage
+		}
+		response["error"] = gin.H{"code": officialVideoErrorCode(code), "message": message}
 	}
 	return response
 }
 
 func officialVideoErrorCode(value string) string {
 	switch value {
+	case provider.ContentPolicyCode:
+		return provider.ContentPolicyCode
 	case "account_unavailable", "provider_unavailable":
 		return "service_unavailable"
 	case "model_not_found":

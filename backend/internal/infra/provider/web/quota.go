@@ -110,7 +110,6 @@ func (a *Adapter) SyncQuotaGroup(ctx context.Context, credential account.Credent
 	}
 	request.Header = buildHeaders(token, lease, "application/json")
 	applyAppHeaders(request.Header, cfg.BaseURL, cfg.BaseURL+"/imagine")
-	a.applySignedStatsig(requestCtx, request, token, lease)
 	response, err := lease.DoDeferredForbidden(request)
 	if err != nil {
 		a.egress.Feedback(context.WithoutCancel(ctx), lease.NodeID, 0, err)

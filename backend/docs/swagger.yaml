@@ -32,6 +32,9 @@ definitions:
       prompt:
         example: Change the background to black
         type: string
+      quality:
+        example: medium
+        type: string
       resolution:
         example: 1k
         type: string
@@ -151,6 +154,8 @@ definitions:
         type: integer
       image:
         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
+      input_reference:
+        $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
       last_frame:
         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
       model:
@@ -169,6 +174,12 @@ definitions:
         type: array
       resolution:
         example: 720p
+        type: string
+      seconds:
+        example: "8"
+        type: string
+      size:
+        example: 1280x720
         type: string
       video:
         $ref: '#/definitions/httpserver.SwaggerVideoMediaInput'
@@ -259,6 +270,12 @@ paths:
     post:
       consumes:
       - application/json
+      - multipart/form-data
+      description: 支持原 JSON image/images URL 对象（包括 data URL），或 multipart 的 image/image[]
+        文件。multipart 标量 n、stream、partial_images 等进入同一业务校验；selection_regions/multi_region_edits
+        使用 JSON 表单值。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。n 仅支持 1，quality
+        仅支持 low/medium。mask、background、input_fidelity、output_format、output_compression、user
+        不支持并明确报错。
       parameters:
       - description: 请求
         in: body
@@ -344,6 +361,7 @@ paths:
       - Images
   /v1/media/images/{asset_id}:
     get:
+      description: 无需 API Key 或 Cookie，可直接下载。
       parameters:
       - description: Asset ID
         in: path
@@ -527,6 +545,42 @@ paths:
       summary: 压缩 Response 上下文
       tags:
       - Responses
+  /v1/videos:
+    post:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射
+        resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image
+        相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原
+        reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos
+        返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed
+        状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。
+      parameters:
+      - description: 请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httpserver.SwaggerVideoGenerationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 创建异步视频任务
+      tags:
+      - Videos
   /v1/videos/{request_id}:
     get:
       parameters:
@@ -551,6 +605,47 @@ paths:
       security:
       - BearerAuth: []
       summary: 查询异步视频任务
+      tags:
+      - Videos
+  /v1/videos/{request_id}/content:
+    get:
+      description: 无需 API Key 或 Cookie；本地视频支持 Range 分段读取。
+      parameters:
+      - description: Request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      produces:
+      - video/mp4
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "206":
+          description: Partial Content
+          schema:
+            type: file
+        "404":
+          description: Not Found
+      summary: 直接下载已完成视频
+      tags:
+      - Videos
+    head:
+      description: 无需 API Key 或 Cookie，不返回文件正文。
+      parameters:
+      - description: Request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+      summary: 读取已完成视频的下载响应头
       tags:
       - Videos
   /v1/videos/edits:
@@ -617,6 +712,13 @@ paths:
     post:
       consumes:
       - application/json
+      - multipart/form-data
+      description: JSON 和 multipart 共用校验。seconds（整数字符串或整数）映射 duration；size 支持 1280x720、720x1280、1920x1080、1080x1920，映射
+        resolution/aspect_ratio，冲突时报错。multipart input_reference 仅支持图片文件，JSON 使用与 image
+        相同的 url/file_id 对象；与 image 不能同时提供。每文件最多 20 MiB，multipart 总计最多 32 MiB、64 段，且不超过服务端请求体限制。保留原
+        reference_images/last_frame/reference_audios 字段；结构化表单值使用 JSON。POST /v1/videos
+        返回标准 video 对象，扩展创建路径返回 request_id。GET 返回标准 queued/in_progress/completed/failed
+        状态与任务真实元数据，完成时保留 video.url 和 content_url。无视频 list/delete/cancel 接口。
       parameters:
       - description: 请求
         in: body
@@ -630,8 +732,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
         "400":
           description: Bad Request
