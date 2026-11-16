@@ -158,7 +158,7 @@ func (s *Service) CreateVideo(ctx context.Context, input VideoInput) (media.Job,
 	if err != nil {
 		return media.Job{}, err
 	}
-	if operation == provider.VideoOperationExtend {
+	if operation == provider.VideoOperationEdit || operation == provider.VideoOperationExtend {
 		routes = preferProviderVideo15Routes(routes, account.ProviderBuild)
 	} else if input.Duration > 0 && input.Duration != 6 {
 		routes = preferProviderVideo15Routes(routes, account.ProviderConsole)
@@ -457,7 +457,7 @@ func routesForVideoOperation(routes []model.Route, operation provider.VideoOpera
 		if candidate.Provider == account.ProviderConsole && upstreamModel == "grok-imagine-video" && extensionStartTime == 0 {
 			compatible = append(compatible, candidate)
 		}
-		if operation == provider.VideoOperationExtend && candidate.Provider == account.ProviderBuild && upstreamModel == "grok-imagine-video-1.5" && extensionStartTime == 0 {
+		if candidate.Provider == account.ProviderBuild && upstreamModel == "grok-imagine-video-1.5" && extensionStartTime == 0 {
 			compatible = append(compatible, candidate)
 		}
 		if operation == provider.VideoOperationExtend && candidate.Provider == account.ProviderWeb && upstreamModel == "grok-imagine-video-1.5" && extensionStartTime > 0 {

@@ -40,17 +40,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TestIntegrationBuildVideoExtension 经真实 HTTP 鉴权、SQLite 选号、Build 适配器和上传票据验证标准延长闭环。
-func TestIntegrationBuildVideoExtension(t *testing.T) {
+// TestIntegrationBuildVideoOperations 经真实 HTTP 鉴权、SQLite 选号、Build 适配器和上传票据验证编辑及延长闭环。
+func TestIntegrationBuildVideoOperations(t *testing.T) {
 	for _, scenario := range []struct {
-		duration int
-		mode     account.BuildRouteMode
+		operation provider.VideoOperation
+		duration  int
+		mode      account.BuildRouteMode
 	}{
-		{2, account.BuildRouteAuto},
-		{6, account.BuildRouteBuild},
-		{10, account.BuildRouteXAI},
+		{provider.VideoOperationExtend, 2, account.BuildRouteAuto},
+		{provider.VideoOperationExtend, 6, account.BuildRouteBuild},
+		{provider.VideoOperationExtend, 10, account.BuildRouteXAI},
+		{provider.VideoOperationEdit, 0, account.BuildRouteAuto},
+		{provider.VideoOperationEdit, 0, account.BuildRouteBuild},
+		{provider.VideoOperationEdit, 0, account.BuildRouteXAI},
 	} {
-		t.Run(fmt.Sprintf("%ds_%s", scenario.duration, scenario.mode), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s_%ds_%s", scenario.operation, scenario.duration, scenario.mode), func(t *testing.T) {
+			endpoint := "/v1/videos/extensions"
+			if scenario.operation == provider.VideoOperationEdit {
+				endpoint = "/v1/videos/edits"
+			}
 			must := func(err error) {
 				t.Helper()
 				if err != nil {
@@ -105,7 +113,7 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
-				case r.Method == http.MethodPost && r.URL.Path == "/xai/v1/videos/extensions":
+				case r.Method == http.MethodPost && r.URL.Path == "/xai"+endpoint:
 					creates.Add(1)
 					if r.Header.Get("Authorization") != "Bearer grok_build-fixture" ||
 						r.Header.Get("User-Agent") != "xai-grok-build/integration" ||
@@ -114,7 +122,7 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 					}
 					var body struct {
 						Model, Prompt string
-						Duration      int
+						Duration      *int
 						Video         struct{ URL string }
 						Output        struct {
 							UploadURL string `json:"upload_url"`
@@ -126,8 +134,15 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 						return
 					}
 					if body.Model != "grok-imagine-video" || body.Prompt != "Continue smoothly" ||
-						body.Duration != scenario.duration || body.Video.URL != "https://source.fixture/source.mp4" {
+						body.Video.URL != "https://source.fixture/source.mp4" {
 						t.Error("extension model, duration or source changed")
+					}
+					if scenario.operation == provider.VideoOperationEdit {
+						if body.Duration != nil {
+							t.Error("edit must omit duration")
+						}
+					} else if body.Duration == nil || *body.Duration != scenario.duration {
+						t.Error("extension duration changed")
 					}
 					target, err := url.Parse(body.Output.UploadURL)
 					if err != nil || target.Host != "media.fixture" || !strings.HasPrefix(target.Path, "/v1/media/uploads/") {
@@ -188,10 +203,14 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 			done := make(chan struct{})
 			go func() { service.RunVideoWorkers(ctx); close(done) }()
 			defer func() { cancel(); <-done }()
-			body, err := json.Marshal(map[string]any{
-				"model": "extension-fixture", "prompt": "Continue smoothly", "duration": scenario.duration,
+			payload := map[string]any{
+				"model": "extension-fixture", "prompt": "Continue smoothly",
 				"video": map[string]string{"url": "https://source.fixture/source.mp4"},
-			})
+			}
+			if scenario.operation == provider.VideoOperationExtend {
+				payload["duration"] = scenario.duration
+			}
+			body, err := json.Marshal(payload)
 			must(err)
 			if scenario.duration == 2 {
 				denied, err := keyService.Create(ctx, clientkeyapp.CreateInput{
@@ -230,7 +249,33 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 					t.Fatal("invalid extension reached upstream")
 				}
 			}
-			request, err := http.NewRequest(http.MethodPost, api.URL+"/v1/videos/extensions", bytes.NewReader(body))
+			if scenario.operation == provider.VideoOperationEdit {
+				for _, field := range []string{"duration", "resolution", "image"} {
+					invalid := map[string]any{"model": "extension-fixture", "prompt": "Continue smoothly",
+						"video": map[string]string{"url": "https://source.fixture/source.mp4"}}
+					switch field {
+					case "duration":
+						invalid[field] = 2
+					case "resolution":
+						invalid[field] = "720p"
+					case "image":
+						invalid[field] = map[string]string{"url": "https://source.fixture/image.png"}
+					}
+					raw, err := json.Marshal(invalid)
+					must(err)
+					req, err := http.NewRequest(http.MethodPost, api.URL+endpoint, bytes.NewReader(raw))
+					must(err)
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", "Bearer "+key.Secret)
+					res, err := http.DefaultClient.Do(req)
+					must(err)
+					res.Body.Close()
+					if res.StatusCode != http.StatusBadRequest {
+						t.Fatalf("edit accepted unsupported %s: status=%d", field, res.StatusCode)
+					}
+				}
+			}
+			request, err := http.NewRequest(http.MethodPost, api.URL+endpoint, bytes.NewReader(body))
 			must(err)
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer "+key.Secret)
@@ -259,7 +304,7 @@ func TestIntegrationBuildVideoExtension(t *testing.T) {
 			}
 			if job.Status != media.StatusCompleted || job.Provider != string(account.ProviderBuild) ||
 				job.AccountID != buildCredential.ID || job.ModelRouteID != buildRoute.ID ||
-				job.Operation != provider.VideoOperationExtend || job.ResultAssetID == "" {
+				job.Operation != scenario.operation || job.ResultAssetID == "" {
 				t.Fatalf("unexpected extension result: status=%s provider=%s account=%d route=%d asset=%q error=%s",
 					job.Status, job.Provider, job.AccountID, job.ModelRouteID, job.ResultAssetID, job.ErrorMessage)
 			}

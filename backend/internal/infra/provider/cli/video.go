@@ -45,7 +45,7 @@ var (
 	// Direct XAI image and video tools use xai-grok-build/<version>, unlike the
 	// grok-shell/<version> user agent used for cli-chat-proxy sampling requests.
 	xaiVideoRequestProfile   = videoRequestProfile{model: xaiVideoModel, imageURLField: "url", userAgentProduct: "xai-grok-build"}
-	xaiVideoExtensionProfile = videoRequestProfile{model: "grok-imagine-video", imageURLField: "url", userAgentProduct: "xai-grok-build"}
+	xaiVideoTransformProfile = videoRequestProfile{model: "grok-imagine-video", imageURLField: "url", userAgentProduct: "xai-grok-build"}
 )
 
 // mediaUploadSecretPattern 匹配上传路径及其中的 64-hex 一次性 token（含完整 URL 前缀）。
@@ -180,7 +180,7 @@ func boundDiagnosticText(value string, limit int) string {
 // image = 首帧；reference_images = 参考图（即使只有 1 张也不升格为 image）。超过网关上限时失败，不静默截断。
 // 显式模式优先；auto 下仅已确认 Super 且 bot_flag_source/bfs 为 1 或 2 默认使用 XAI。
 // 其他 auto Super 账号仅在当次 Build 创建返回 403 后探测 XAI。
-// 标准延长始终使用 XAI extensions 与原任务上传回调，不受生成端点的路由模式影响。
+// 标准编辑和延长始终使用 XAI 对应端点与原任务上传回调，不受生成端点的路由模式影响。
 func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoRequest) (provider.VideoResult, error) {
 	for attempt := 0; ; attempt++ {
 		result, err := a.generateVideoOnce(ctx, request)
@@ -205,7 +205,7 @@ func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoReque
 // generateVideoOnce 执行一次创建及原任务轮询，不在未知受理状态下重放。
 func (a *Adapter) generateVideoOnce(ctx context.Context, request provider.VideoRequest) (provider.VideoResult, error) {
 	switch request.Operation {
-	case "", provider.VideoOperationGenerate, provider.VideoOperationExtend:
+	case "", provider.VideoOperationGenerate, provider.VideoOperationEdit, provider.VideoOperationExtend:
 	default:
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("Build 不支持视频操作: %s", request.Operation))
 	}
@@ -217,7 +217,7 @@ func (a *Adapter) generateVideoOnce(ctx context.Context, request provider.VideoR
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
 	}
 	credential := request.Credential
-	if request.Operation == provider.VideoOperationExtend {
+	if request.Operation == provider.VideoOperationEdit || request.Operation == provider.VideoOperationExtend {
 		return a.generateVideoOnXAI(ctx, request, credential, accessToken, false)
 	}
 	routeMode := normalizedBuildRouteMode(credential)
@@ -260,8 +260,11 @@ func (a *Adapter) generateVideoOnce(ctx context.Context, request provider.VideoR
 // generateVideoOnXAI 按操作选择官方端点和模型，并复用一次性上传及同任务轮询协议。
 func (a *Adapter) generateVideoOnXAI(ctx context.Context, request provider.VideoRequest, credential account.Credential, accessToken string, recordFallback bool) (provider.VideoResult, error) {
 	profile, createPath := xaiVideoRequestProfile, "/videos/generations"
-	if request.Operation == provider.VideoOperationExtend {
-		profile, createPath = xaiVideoExtensionProfile, "/videos/extensions"
+	switch request.Operation {
+	case provider.VideoOperationEdit:
+		profile, createPath = xaiVideoTransformProfile, "/videos/edits"
+	case provider.VideoOperationExtend:
+		profile, createPath = xaiVideoTransformProfile, "/videos/extensions"
 	}
 	payload, err := videoCreatePayload(request, "", profile)
 	if err != nil {
@@ -345,9 +348,9 @@ func videoCreatePayload(request provider.VideoRequest, uploadURL string, profile
 	if len(request.Prompt) > buildVideoPromptMaxBytes {
 		return nil, fmt.Errorf("prompt 过长")
 	}
-	if request.Operation == provider.VideoOperationExtend {
+	if request.Operation == provider.VideoOperationEdit || request.Operation == provider.VideoOperationExtend {
 		if strings.TrimSpace(request.Prompt) == "" {
-			return nil, fmt.Errorf("视频延长必须提供 prompt")
+			return nil, fmt.Errorf("视频编辑/延长必须提供 prompt")
 		}
 		source := strings.TrimSpace(request.VideoURL)
 		parsed, err := url.Parse(source)
@@ -355,22 +358,27 @@ func videoCreatePayload(request provider.VideoRequest, uploadURL string, profile
 		if err != nil || !((parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil) || dataVideo) {
 			return nil, fmt.Errorf("输入视频必须是 HTTPS URL 或 video data URL")
 		}
-		duration := request.Duration
-		if duration == 0 {
-			duration = 6
-		}
-		if duration < 2 || duration > 10 {
-			return nil, fmt.Errorf("视频延长 duration 必须在 2 到 10 秒之间")
-		}
 		if request.ImageURL != "" || request.LastFrameURL != "" || len(request.ReferenceURLs) > 0 || len(request.ReferenceAudios) > 0 || len(request.Keyframes) > 0 {
-			return nil, fmt.Errorf("视频延长不支持图片、关键帧或参考素材")
+			return nil, fmt.Errorf("视频编辑/延长不支持图片、关键帧或参考素材")
 		}
 		if request.AspectRatio != "" || request.Resolution != "" || request.VideoExtensionStartTime != 0 {
-			return nil, fmt.Errorf("Build 标准视频延长不支持 aspect_ratio、resolution 或 video_extension_start_time")
+			return nil, fmt.Errorf("Build 标准视频编辑/延长不支持 aspect_ratio、resolution 或 video_extension_start_time")
 		}
 		payload := map[string]any{
 			"model": profile.model, "prompt": mediadomain.NormalizeOfficialPromptTags(strings.TrimSpace(request.Prompt)),
-			"video": map[string]any{"url": source}, "duration": duration,
+			"video": map[string]any{"url": source},
+		}
+		if request.Operation == provider.VideoOperationExtend {
+			duration := request.Duration
+			if duration == 0 {
+				duration = 6
+			}
+			if duration < 2 || duration > 10 {
+				return nil, fmt.Errorf("视频延长 duration 必须在 2 到 10 秒之间")
+			}
+			payload["duration"] = duration
+		} else if request.Duration != 0 {
+			return nil, fmt.Errorf("视频编辑不支持 duration")
 		}
 		if uploadURL = strings.TrimSpace(uploadURL); uploadURL != "" {
 			payload["output"] = map[string]any{"upload_url": uploadURL}
