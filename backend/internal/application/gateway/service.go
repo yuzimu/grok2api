@@ -46,7 +46,7 @@ var (
 	ErrVideoInputTooLarge         = errors.New("视频参考图片编码后总输入超过 32 MiB")
 	ErrVideoInputUnavailable      = errors.New("视频临时输入不存在或已过期")
 	ErrVideoParameterInvalid      = errors.New("视频请求参数无效")
-	ErrVideoOperationUnsupported  = errors.New("视频编辑/延长仅支持路由到 Console grok-imagine-video")
+	ErrVideoOperationUnsupported  = errors.New("视频操作无兼容路由：编辑支持 Console grok-imagine-video；标准延长支持 Build grok-imagine-video-1.5 或 Console grok-imagine-video；Web 延长需提供 video_extension_start_time")
 	ErrLedgerUnavailable          = errors.New("计费账本暂不可用")
 )
 

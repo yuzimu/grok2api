@@ -44,7 +44,8 @@ var (
 	buildVideoRequestProfile = videoRequestProfile{model: buildVideoModel, imageURLField: "image_url"}
 	// Direct XAI image and video tools use xai-grok-build/<version>, unlike the
 	// grok-shell/<version> user agent used for cli-chat-proxy sampling requests.
-	xaiVideoRequestProfile = videoRequestProfile{model: xaiVideoModel, imageURLField: "url", userAgentProduct: "xai-grok-build"}
+	xaiVideoRequestProfile   = videoRequestProfile{model: xaiVideoModel, imageURLField: "url", userAgentProduct: "xai-grok-build"}
+	xaiVideoExtensionProfile = videoRequestProfile{model: "grok-imagine-video", imageURLField: "url", userAgentProduct: "xai-grok-build"}
 )
 
 // mediaUploadSecretPattern 匹配上传路径及其中的 64-hex 一次性 token（含完整 URL 前缀）。
@@ -56,8 +57,9 @@ var bareUploadTokenPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{64}\b`)
 // videoUpstreamError 是上游非 2xx 的可分类错误：保留 HTTP 状态，摘要经密钥脱敏且长度有界。
 // 不得将原始响应体写入 Error()，避免 upload_url / token 泄漏到 media_jobs.error_message、日志或审计。
 type videoUpstreamError struct {
-	status  int
-	summary string
+	status                  int
+	summary                 string
+	referenceTransferFailed bool
 }
 
 func (e *videoUpstreamError) Error() string {
@@ -74,9 +76,29 @@ func (e *videoUpstreamError) HTTPStatusCode() int {
 	return e.status
 }
 
+// Is 保留明确的参考图传输拒绝，普通 HTTP 和网络错误不触发重新生成。
+func (e *videoUpstreamError) Is(target error) bool {
+	return target == errBuildVideoReferenceTransfer && e != nil && e.referenceTransferFailed
+}
+
+var errBuildVideoReferenceTransfer = errors.New("Build 视频参考图传输失败")
+
 // newVideoUpstreamError 从上游响应构造密钥安全、有界的错误摘要。
 func newVideoUpstreamError(status int, body []byte) *videoUpstreamError {
-	return &videoUpstreamError{status: status, summary: summarizeVideoUpstreamError(status, body)}
+	code, message := extractVideoUpstreamErrorFields(body)
+	return &videoUpstreamError{
+		status: status, summary: summarizeVideoUpstreamError(status, body),
+		referenceTransferFailed: status != http.StatusTooManyRequests &&
+			status != http.StatusUnauthorized && status != http.StatusForbidden &&
+			isBuildVideoReferenceTransfer(code+" "+message),
+	}
+}
+
+// isBuildVideoReferenceTransfer 仅识别上游明确返回的参考图上传或拉取失败标记。
+func isBuildVideoReferenceTransfer(message string) bool {
+	value := strings.ToLower(message)
+	return strings.Contains(value, "image_reference_transfer_failed") ||
+		strings.Contains(value, "invalid image upload")
 }
 
 func summarizeVideoUpstreamError(status int, body []byte) string {
@@ -158,7 +180,35 @@ func boundDiagnosticText(value string, limit int) string {
 // image = 首帧；reference_images = 参考图（即使只有 1 张也不升格为 image）。超过网关上限时失败，不静默截断。
 // 显式模式优先；auto 下仅已确认 Super 且 bot_flag_source/bfs 为 1 或 2 默认使用 XAI。
 // 其他 auto Super 账号仅在当次 Build 创建返回 403 后探测 XAI。
+// 标准延长始终使用 XAI extensions 与原任务上传回调，不受生成端点的路由模式影响。
 func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoRequest) (provider.VideoResult, error) {
+	for attempt := 0; ; attempt++ {
+		result, err := a.generateVideoOnce(ctx, request)
+		if err == nil || !errors.Is(err, errBuildVideoReferenceTransfer) ||
+			buildVideoReferenceImageCount(request) == 0 || attempt >= 3 || ctx.Err() != nil {
+			return result, err
+		}
+		delay := (2 * time.Second) << attempt
+		a.logger.Warn("build_video_reference_transfer_retry",
+			"job_id", request.JobID, "account_id", request.Credential.ID,
+			"retry", attempt+1, "delay_ms", delay.Milliseconds())
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePoll, 0, ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+// generateVideoOnce 执行一次创建及原任务轮询，不在未知受理状态下重放。
+func (a *Adapter) generateVideoOnce(ctx context.Context, request provider.VideoRequest) (provider.VideoResult, error) {
+	switch request.Operation {
+	case "", provider.VideoOperationGenerate, provider.VideoOperationExtend:
+	default:
+		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("Build 不支持视频操作: %s", request.Operation))
+	}
 	if total := buildVideoReferenceImageCount(request); total > buildVideoMaxImages {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("Build grok-imagine-video-1.5 最多支持 %d 张参考图，当前为 %d 张", buildVideoMaxImages, total))
 	}
@@ -167,6 +217,9 @@ func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoReque
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
 	}
 	credential := request.Credential
+	if request.Operation == provider.VideoOperationExtend {
+		return a.generateVideoOnXAI(ctx, request, credential, accessToken, false)
+	}
 	routeMode := normalizedBuildRouteMode(credential)
 	xaiEligible := account.IsBuildSuper(credential, request.Billing)
 	if routeMode == account.BuildRouteXAI || (routeMode == account.BuildRouteAuto && xaiEligible && a.CredentialMetadata(credential).BuildBotFlagged) {
@@ -204,7 +257,16 @@ func (a *Adapter) GenerateVideo(ctx context.Context, request provider.VideoReque
 	return a.generateVideoOnXAI(ctx, request, credential, accessToken, true)
 }
 
+// generateVideoOnXAI 按操作选择官方端点和模型，并复用一次性上传及同任务轮询协议。
 func (a *Adapter) generateVideoOnXAI(ctx context.Context, request provider.VideoRequest, credential account.Credential, accessToken string, recordFallback bool) (provider.VideoResult, error) {
+	profile, createPath := xaiVideoRequestProfile, "/videos/generations"
+	if request.Operation == provider.VideoOperationExtend {
+		profile, createPath = xaiVideoExtensionProfile, "/videos/extensions"
+	}
+	payload, err := videoCreatePayload(request, "", profile)
+	if err != nil {
+		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
+	}
 	issuer := a.uploadIssuerRef()
 	if issuer == nil {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, fmt.Errorf("XAI 视频需要媒体上传接收服务"))
@@ -218,16 +280,13 @@ func (a *Adapter) generateVideoOnXAI(ctx context.Context, request provider.Video
 		// 配置错误（例如 PublicAPIBaseURL 不可用）不得误标降级。
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
 	}
-	payload, err := videoCreatePayload(request, uploadURL, xaiVideoRequestProfile)
-	if err != nil {
-		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
-	}
+	payload["output"] = map[string]any{"upload_url": uploadURL}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoStagePrepare, 0, err)
 	}
 	base := a.fallbackBaseURL()
-	createResp, err := a.doVideoJSON(ctx, credential, accessToken, http.MethodPost, base, "/videos/generations", body, xaiVideoRequestProfile, true)
+	createResp, err := a.doVideoJSON(ctx, credential, accessToken, http.MethodPost, base, createPath, body, profile, true)
 	if err != nil {
 		return provider.VideoResult{}, provider.WrapVideoStage(provider.VideoCreateFailureStage(err), 0, err)
 	}
@@ -242,7 +301,7 @@ func (a *Adapter) generateVideoOnXAI(ctx context.Context, request provider.Video
 	if request.Progress != nil {
 		request.Progress(1)
 	}
-	return a.pollVideoJob(ctx, credential, accessToken, base, jobID, assetID, xaiVideoRequestProfile, request.Progress)
+	return a.pollVideoJob(ctx, credential, accessToken, base, jobID, assetID, profile, request.Progress)
 }
 
 // DownloadVideo 通过 Build egress 拉取已完成任务的公开 CDN URL。
@@ -285,6 +344,38 @@ func (a *Adapter) DownloadVideo(ctx context.Context, credential account.Credenti
 func videoCreatePayload(request provider.VideoRequest, uploadURL string, profile videoRequestProfile) (map[string]any, error) {
 	if len(request.Prompt) > buildVideoPromptMaxBytes {
 		return nil, fmt.Errorf("prompt 过长")
+	}
+	if request.Operation == provider.VideoOperationExtend {
+		if strings.TrimSpace(request.Prompt) == "" {
+			return nil, fmt.Errorf("视频延长必须提供 prompt")
+		}
+		source := strings.TrimSpace(request.VideoURL)
+		parsed, err := url.Parse(source)
+		dataVideo := strings.HasPrefix(strings.ToLower(source), "data:video/") && strings.Contains(strings.ToLower(source), ";base64,")
+		if err != nil || !((parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil) || dataVideo) {
+			return nil, fmt.Errorf("输入视频必须是 HTTPS URL 或 video data URL")
+		}
+		duration := request.Duration
+		if duration == 0 {
+			duration = 6
+		}
+		if duration < 2 || duration > 10 {
+			return nil, fmt.Errorf("视频延长 duration 必须在 2 到 10 秒之间")
+		}
+		if request.ImageURL != "" || request.LastFrameURL != "" || len(request.ReferenceURLs) > 0 || len(request.ReferenceAudios) > 0 || len(request.Keyframes) > 0 {
+			return nil, fmt.Errorf("视频延长不支持图片、关键帧或参考素材")
+		}
+		if request.AspectRatio != "" || request.Resolution != "" || request.VideoExtensionStartTime != 0 {
+			return nil, fmt.Errorf("Build 标准视频延长不支持 aspect_ratio、resolution 或 video_extension_start_time")
+		}
+		payload := map[string]any{
+			"model": profile.model, "prompt": mediadomain.NormalizeOfficialPromptTags(strings.TrimSpace(request.Prompt)),
+			"video": map[string]any{"url": source}, "duration": duration,
+		}
+		if uploadURL = strings.TrimSpace(uploadURL); uploadURL != "" {
+			payload["output"] = map[string]any{"upload_url": uploadURL}
+		}
+		return payload, nil
 	}
 	if err := mediadomain.ValidateVideoKeyframes(request.Keyframes, request.Duration); err != nil {
 		return nil, err
@@ -500,6 +591,16 @@ func parseVideoCreateResponse(body []byte) (string, error) {
 		return "", err
 	}
 	if message := firstNestedString(root, "error", "message"); message != "" {
+		// 已返回任务标识的响应受理状态不明，不允许按上传失败重建。
+		identified := firstString(root, "request_id", "id") != ""
+		if data, ok := root["data"].(map[string]any); ok {
+			identified = identified || firstString(data, "request_id", "id") != ""
+		}
+		if !identified {
+			if err := buildVideoReferenceError(root); err != nil {
+				return "", err
+			}
+		}
 		return "", fmt.Errorf("Build 视频创建失败: %s", safeVideoDiagnosticMessage(message))
 	}
 	if id := firstString(root, "request_id", "id"); id != "" {
@@ -509,6 +610,9 @@ func parseVideoCreateResponse(body []byte) (string, error) {
 		if id := firstString(data, "request_id", "id"); id != "" {
 			return id, nil
 		}
+	}
+	if err := buildVideoReferenceError(root); err != nil {
+		return "", err
 	}
 	return "", fmt.Errorf("Build 视频创建响应缺少 request_id")
 }
@@ -521,9 +625,6 @@ func parseVideoStatusResponse(body []byte, progress func(int), allowMissingURL b
 	if err := buildVideoPolicyError(root); err != nil {
 		return provider.VideoResult{}, false, err
 	}
-	if message := firstNestedString(root, "error", "message"); message != "" {
-		return provider.VideoResult{}, false, fmt.Errorf("Build 视频生成失败: %s", safeVideoDiagnosticMessage(message))
-	}
 	statusSource := root
 	if data, ok := root["data"].(map[string]any); ok {
 		statusSource = data
@@ -535,6 +636,18 @@ func parseVideoStatusResponse(body []byte, progress func(int), allowMissingURL b
 		progress(value)
 	}
 	status := strings.ToLower(strings.TrimSpace(firstString(statusSource, "status", "state")))
+	// 只有已确认失败的原任务可以重新创建，处理中、取消或完成状态均不重放。
+	if status == "failed" || status == "error" {
+		if err := buildVideoReferenceError(statusSource); err != nil {
+			return provider.VideoResult{}, false, err
+		}
+		if err := buildVideoReferenceError(root); err != nil {
+			return provider.VideoResult{}, false, err
+		}
+	}
+	if message := firstNestedString(root, "error", "message"); message != "" {
+		return provider.VideoResult{}, false, fmt.Errorf("Build 视频生成失败: %s", safeVideoDiagnosticMessage(message))
+	}
 	switch status {
 	case "failed", "error", "cancelled", "canceled":
 		message := firstNestedString(statusSource, "error", "message")
@@ -557,6 +670,21 @@ func parseVideoStatusResponse(body []byte, progress func(int), allowMissingURL b
 		}
 		return provider.VideoResult{}, false, nil
 	}
+}
+
+// buildVideoReferenceError 将结构化错误转换为可识别的传输失败，摘要沿用票据脱敏。
+func buildVideoReferenceError(source map[string]any) error {
+	fields := []string{
+		firstNestedString(source, "error", "code"), firstNestedString(source, "error", "message"),
+		firstString(source, "error"), firstString(source, "error_code"),
+		firstString(source, "error_message"), firstString(source, "message"),
+	}
+	for _, message := range fields {
+		if isBuildVideoReferenceTransfer(message) {
+			return fmt.Errorf("%w: %s", errBuildVideoReferenceTransfer, safeVideoDiagnosticMessage(message))
+		}
+	}
+	return nil
 }
 
 // buildVideoPolicyError 保留明确审核码，避免仅有 code 的响应被降级为普通失败。

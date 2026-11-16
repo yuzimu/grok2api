@@ -158,7 +158,9 @@ func (s *Service) CreateVideo(ctx context.Context, input VideoInput) (media.Job,
 	if err != nil {
 		return media.Job{}, err
 	}
-	if input.Duration > 0 && input.Duration != 6 {
+	if operation == provider.VideoOperationExtend {
+		routes = preferProviderVideo15Routes(routes, account.ProviderBuild)
+	} else if input.Duration > 0 && input.Duration != 6 {
 		routes = preferProviderVideo15Routes(routes, account.ProviderConsole)
 	} else {
 		routes = preferVideo15Routes(routes)
@@ -444,6 +446,7 @@ func validateVideoRouteParameters(operation provider.VideoOperation, providerVal
 	return nil
 }
 
+// routesForVideoOperation 保留标准 Build/Console 操作和带绝对续接时间的 Web 延长路由。
 func routesForVideoOperation(routes []model.Route, operation provider.VideoOperation, extensionStartTime float64) ([]model.Route, error) {
 	if operation == provider.VideoOperationGenerate {
 		return routes, nil
@@ -452,6 +455,9 @@ func routesForVideoOperation(routes []model.Route, operation provider.VideoOpera
 	for _, candidate := range routes {
 		upstreamModel := strings.TrimSpace(candidate.UpstreamModel)
 		if candidate.Provider == account.ProviderConsole && upstreamModel == "grok-imagine-video" && extensionStartTime == 0 {
+			compatible = append(compatible, candidate)
+		}
+		if operation == provider.VideoOperationExtend && candidate.Provider == account.ProviderBuild && upstreamModel == "grok-imagine-video-1.5" && extensionStartTime == 0 {
 			compatible = append(compatible, candidate)
 		}
 		if operation == provider.VideoOperationExtend && candidate.Provider == account.ProviderWeb && upstreamModel == "grok-imagine-video-1.5" && extensionStartTime > 0 {
